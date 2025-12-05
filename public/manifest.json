@@ -1,9 +1,10 @@
 {
+  "id": "/",
   "name": "CineRank AI - Movie & TV Discovery",
   "short_name": "CineRank AI",
   "description": "AI-powered movie and TV show discovery app with intelligent recommendations",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#020617",
   "theme_color": "#06b6d4",
@@ -11,21 +12,21 @@
   "categories": ["entertainment", "lifestyle"],
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "./icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "maskable any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "./icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "maskable any"
     }
   ],
   "screenshots": [
     {
-      "src": "/screenshot-mobile.png",
+      "src": "./screens/screenshot-mobile.png",
       "sizes": "540x720",
       "type": "image/png",
       "form_factor": "narrow"
@@ -37,14 +38,14 @@
       "short_name": "Search",
       "description": "Search for movies and TV shows",
       "url": "/?action=search",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Trending Now",
       "short_name": "Trending",
       "description": "View trending content",
       "url": "/?action=trending",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }
