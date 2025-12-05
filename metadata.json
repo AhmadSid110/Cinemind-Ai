@@ -1,0 +1,5 @@
+{
+  "name": "Cinerank final",
+  "description": "An intelligent, natural-language movie and TV discovery engine powered by Gemini AI and TMDB.",
+  "requestFramePermissions": []
+}
