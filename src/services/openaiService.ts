@@ -1,5 +1,7 @@
 import { GeminiFilter } from "../types";
 
+const OPENAI_MODEL = 'gpt-4o-mini';
+
 const SYSTEM_PROMPT = `
 You are CineMind, an expert movie and TV discovery assistant. 
 Your goal is to translate natural language user queries into structured JSON search parameters for the TMDB API.
@@ -48,7 +50,7 @@ export const analyzeQueryWithOpenAI = async (userQuery: string, apiKey: string):
         'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: OPENAI_MODEL,
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: userQuery }
