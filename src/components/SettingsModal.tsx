@@ -1,18 +1,23 @@
 import React, { useState } from 'react';
-import { Key, Save, AlertTriangle, Sparkles } from 'lucide-react';
+import { Key, Save, AlertTriangle, Sparkles, Bot } from 'lucide-react';
 import { validateKey } from '../services/tmdbService';
+import { AIModelType } from '../types';
 
 interface SettingsModalProps {
   currentKey: string;
   currentGeminiKey: string;
-  onSave: (tmdbKey: string, geminiKey: string) => void;
+  currentOpenaiKey: string;
+  currentAiModel: AIModelType;
+  onSave: (tmdbKey: string, geminiKey: string, openaiKey: string, aiModel: AIModelType) => void;
   onClose: () => void;
   isOpen: boolean;
 }
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ currentKey, currentGeminiKey, onSave, onClose, isOpen }) => {
+const SettingsModal: React.FC<SettingsModalProps> = ({ currentKey, currentGeminiKey, currentOpenaiKey, currentAiModel, onSave, onClose, isOpen }) => {
   const [keyInput, setKeyInput] = useState(currentKey);
   const [geminiKeyInput, setGeminiKeyInput] = useState(currentGeminiKey);
+  const [openaiKeyInput, setOpenaiKeyInput] = useState(currentOpenaiKey);
+  const [aiModelInput, setAiModelInput] = useState<AIModelType>(currentAiModel);
   const [status, setStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
 
   if (!isOpen) return null;
@@ -20,6 +25,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ currentKey, currentGemini
   const handleSave = async () => {
     const trimmedTmdb = keyInput.trim();
     const trimmedGemini = geminiKeyInput.trim();
+    const trimmedOpenai = openaiKeyInput.trim();
 
     if (!trimmedTmdb) {
         setStatus('invalid');
@@ -31,7 +37,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ currentKey, currentGemini
     
     if (isValid) {
         setStatus('valid');
-        onSave(trimmedTmdb, trimmedGemini);
+        onSave(trimmedTmdb, trimmedGemini, trimmedOpenai, aiModelInput);
         setTimeout(onClose, 500);
     } else {
         setStatus('invalid');
@@ -81,7 +87,58 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ currentKey, currentGemini
               />
           </div>
           <p className="text-slate-500 text-xs">
-              Required for Natural Language Search. Get it from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-purple-400 hover:underline">Google AI Studio</a>.
+              Required for Natural Language Search with Gemini. Get it from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-purple-400 hover:underline">Google AI Studio</a>.
+          </p>
+        </div>
+
+        {/* OpenAI Section */}
+        <div className="space-y-4 mb-6 pt-4 border-t border-slate-800">
+          <div>
+              <label className="text-xs font-bold uppercase text-slate-500 block mb-1 flex items-center gap-1">
+                  <Bot size={12} /> OpenAI API Key
+              </label>
+              <input 
+                type="text" 
+                value={openaiKeyInput}
+                onChange={(e) => setOpenaiKeyInput(e.target.value)}
+                placeholder="sk-..."
+                className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-emerald-500 transition font-mono text-xs"
+              />
+          </div>
+          <p className="text-slate-500 text-xs">
+              Required for Natural Language Search with OpenAI. Get it from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline">OpenAI Platform</a>.
+          </p>
+        </div>
+
+        {/* AI Model Selection */}
+        <div className="space-y-4 mb-6 pt-4 border-t border-slate-800">
+          <label className="text-xs font-bold uppercase text-slate-500 block mb-2">AI Model for Search</label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setAiModelInput('gemini')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border transition-all ${
+                aiModelInput === 'gemini'
+                  ? 'bg-purple-600/20 border-purple-500 text-purple-300'
+                  : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-500'
+              }`}
+            >
+              <Sparkles size={16} />
+              <span className="font-medium">Gemini</span>
+            </button>
+            <button
+              onClick={() => setAiModelInput('openai')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border transition-all ${
+                aiModelInput === 'openai'
+                  ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300'
+                  : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-slate-500'
+              }`}
+            >
+              <Bot size={16} />
+              <span className="font-medium">OpenAI</span>
+            </button>
+          </div>
+          <p className="text-slate-500 text-xs">
+              Select which AI model to use for natural language search.
           </p>
         </div>
 

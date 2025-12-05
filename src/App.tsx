@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Home, Library, Settings, Sparkles, Loader2, Video, Trophy, Heart, List, Film, Tv, PlayCircle } from 'lucide-react';
-import { MediaItem, MediaDetail, AppState, Episode, GeminiFilter, PersonDetail } from './types';
+import { MediaItem, MediaDetail, AppState, Episode, GeminiFilter, PersonDetail, AIModelType } from './types';
 import * as tmdb from './services/tmdbService';
 import { analyzeQuery } from './services/geminiService';
+import { analyzeQueryWithOpenAI } from './services/openaiService';
 import MediaCard from './components/MediaCard';
 import DetailView from './components/DetailView';
 import PersonView from './components/PersonView';
@@ -15,6 +16,8 @@ const App: React.FC = () => {
     searchQuery: '',
     tmdbKey: localStorage.getItem('tmdb_key') || '',
     geminiKey: localStorage.getItem('gemini_key') || process.env.API_KEY || '',
+    openaiKey: localStorage.getItem('openai_key') || '',
+    aiModel: (localStorage.getItem('ai_model') as AIModelType) || 'gemini',
     searchResults: [],
     selectedItem: null,
     selectedPerson: null,
@@ -57,8 +60,14 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!state.searchQuery.trim() || !state.tmdbKey) return;
 
-    if (!state.geminiKey) {
-      alert("Please add your Gemini API Key in settings to use AI Search.");
+    // Check if the selected model's key is available
+    if (state.aiModel === 'gemini' && !state.geminiKey) {
+      alert("Please add your Gemini API Key in settings to use AI Search with Gemini.");
+      setIsSettingsOpen(true);
+      return;
+    }
+    if (state.aiModel === 'openai' && !state.openaiKey) {
+      alert("Please add your OpenAI API Key in settings to use AI Search with OpenAI.");
       setIsSettingsOpen(true);
       return;
     }
@@ -66,8 +75,13 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, isLoading: true, error: null, aiExplanation: null }));
 
     try {
-      // 1. Analyze with Gemini
-      const analysis: GeminiFilter = await analyzeQuery(state.searchQuery, state.geminiKey);
+      // 1. Analyze with selected AI model
+      let analysis: GeminiFilter;
+      if (state.aiModel === 'openai') {
+        analysis = await analyzeQueryWithOpenAI(state.searchQuery, state.openaiKey);
+      } else {
+        analysis = await analyzeQuery(state.searchQuery, state.geminiKey);
+      }
       let results: MediaItem[] = [];
       let explanation = analysis.explanation || "Results based on your search.";
 
@@ -399,10 +413,14 @@ const App: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         currentKey={state.tmdbKey}
         currentGeminiKey={state.geminiKey}
-        onSave={(key, geminiKey) => {
+        currentOpenaiKey={state.openaiKey}
+        currentAiModel={state.aiModel}
+        onSave={(key, geminiKey, openaiKey, aiModel) => {
             localStorage.setItem('tmdb_key', key);
             localStorage.setItem('gemini_key', geminiKey);
-            setState(prev => ({ ...prev, tmdbKey: key, geminiKey: geminiKey }));
+            localStorage.setItem('openai_key', openaiKey);
+            localStorage.setItem('ai_model', aiModel);
+            setState(prev => ({ ...prev, tmdbKey: key, geminiKey: geminiKey, openaiKey: openaiKey, aiModel: aiModel }));
         }}
       />
 

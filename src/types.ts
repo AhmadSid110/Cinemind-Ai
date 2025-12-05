@@ -110,11 +110,15 @@ export interface GeminiFilter {
   explanation?: string; // Short text explaining what AI did
 }
 
+export type AIModelType = 'gemini' | 'openai';
+
 export interface AppState {
   view: 'trending' | 'search' | 'detail' | 'library' | 'settings';
   searchQuery: string;
   tmdbKey: string;
   geminiKey: string;
+  openaiKey: string;
+  aiModel: AIModelType;
   searchResults: MediaItem[];
   selectedItem: MediaDetail | null;
   selectedPerson: PersonDetail | null;
