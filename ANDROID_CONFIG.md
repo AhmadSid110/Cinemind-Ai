@@ -10,7 +10,7 @@ The project is pre-configured with the following defaults:
 - **Package ID**: com.cinemind.app
 - **Theme Color**: #06b6d4 (cyan)
 - **Background Color**: #020617 (dark)
-- **Orientation**: Portrait (primary)
+- **Orientation**: Any (both portrait and landscape supported)
 
 ## 🎨 Customization
 
@@ -69,6 +69,36 @@ Edit `android/app/src/main/res/values/colors.xml`:
     <color name="colorAccent">#3b82f6</color>
 </resources>
 ```
+
+### 6. Change Screen Orientation
+
+The app now supports both portrait and landscape orientations by default.
+
+To restrict to portrait only, edit `android/app/src/main/AndroidManifest.xml`:
+```xml
+<activity
+    android:screenOrientation="portrait"
+    ...
+</activity>
+```
+
+To restrict to landscape only:
+```xml
+<activity
+    android:screenOrientation="landscape"
+    ...
+</activity>
+```
+
+To allow all orientations (current default):
+```xml
+<activity
+    android:screenOrientation="unspecified"
+    ...
+</activity>
+```
+
+**Note**: The PWA manifest (`public/manifest.json`) is set to `"orientation": "any"` to support both portrait and landscape modes.
 
 ## 🔐 Permissions
 

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { X, Play, Plus, Check, Star, Calendar, Clock, Users, Video, ChevronDown, MonitorPlay, Film, ExternalLink } from 'lucide-react';
 import { MediaDetail, MediaItem, Episode, CastMember, CrewMember } from '../types';
 import { getSeasonEpisodes } from '../services/tmdbService';
+import { generateEpisodeKey, generateMediaKey } from '../utils';
 import StarRating from './StarRating';
 import {
   BarChart,
@@ -201,8 +202,8 @@ const DetailView: React.FC<DetailViewProps> = ({
               <div className="bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-4 inline-block">
                 <p className="text-sm text-slate-400 mb-2 font-medium">Your Rating:</p>
                 <StarRating
-                  value={userRatings[`${item.media_type}-${item.id}`] || 0}
-                  onChange={(rating) => onRate(`${item.media_type}-${item.id}`, rating)}
+                  value={userRatings[generateMediaKey(item.media_type as 'movie' | 'tv', item.id)] || 0}
+                  onChange={(rating) => onRate(generateMediaKey(item.media_type as 'movie' | 'tv', item.id), rating)}
                   size={24}
                 />
               </div>
@@ -341,7 +342,7 @@ const DetailView: React.FC<DetailViewProps> = ({
                       {/* Episode List */}
                       <div className="space-y-3 max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 pr-2">
                           {episodes.map(ep => {
-                              const episodeKey = `tv-${item.id}-s${ep.season_number}e${ep.episode_number}`;
+                              const episodeKey = generateEpisodeKey(item.id, ep.season_number, ep.episode_number);
                               return (
                               <div key={ep.id} className="bg-slate-900/50 p-3 rounded-xl border border-white/5 group hover:border-cyan-500/30 transition-all">
                                   <div className="flex gap-3 mb-2">

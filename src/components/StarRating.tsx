@@ -16,6 +16,9 @@ const StarRating: React.FC<StarRatingProps> = ({
 }) => {
   const [hoverValue, setHoverValue] = useState<number | null>(null);
   
+  // Validate and clamp value to 0-10 range
+  const clampedValue = Math.max(0, Math.min(10, value));
+  
   const stars = Array.from({ length: 10 }, (_, i) => i + 1);
   
   const handleClick = (rating: number) => {
@@ -24,7 +27,7 @@ const StarRating: React.FC<StarRatingProps> = ({
     }
   };
   
-  const displayValue = hoverValue ?? value;
+  const displayValue = hoverValue ?? clampedValue;
   
   return (
     <div className="flex items-center gap-1">
@@ -53,7 +56,7 @@ const StarRating: React.FC<StarRatingProps> = ({
         );
       })}
       <span className="ml-2 text-sm font-bold text-slate-300">
-        {value > 0 ? `${value}/10` : 'Rate'}
+        {clampedValue > 0 ? `${clampedValue}/10` : 'Rate'}
       </span>
     </div>
   );

@@ -42,9 +42,16 @@ export const analyzeQueryWithOpenAI = async (userQuery: string, apiKey: string):
   }
 
   try {
+    // NOTE: dangerouslyAllowBrowser is set to true for client-side usage.
+    // In a production environment, API calls should be proxied through a backend server
+    // to protect API keys from being exposed in the browser.
+    // For a more secure implementation, consider:
+    // 1. Setting up a serverless function (e.g., Vercel, Netlify, or Firebase Functions)
+    // 2. Proxying OpenAI requests through your backend
+    // 3. Using environment variables and server-side API key management
     const openai = new OpenAI({ 
       apiKey,
-      dangerouslyAllowBrowser: true // Since this is a client-side app
+      dangerouslyAllowBrowser: true
     });
     
     const response = await openai.chat.completions.create({
@@ -66,7 +73,25 @@ export const analyzeQueryWithOpenAI = async (userQuery: string, apiKey: string):
     const text = response.choices[0]?.message?.content;
     if (!text) throw new Error("No response from OpenAI");
 
-    const parsed = JSON.parse(text);
+    // Parse and validate the JSON response
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      console.error("Failed to parse OpenAI response:", e);
+      throw new Error("Invalid JSON response from OpenAI");
+    }
+
+    // Basic validation of required fields
+    if (typeof parsed !== 'object' || parsed === null) {
+      throw new Error("Invalid response structure from OpenAI");
+    }
+
+    // Ensure searchType exists and is valid
+    if (!parsed.searchType || !['general', 'episode_ranking', 'trending'].includes(parsed.searchType)) {
+      parsed.searchType = 'general';
+    }
+
     return parsed as GeminiFilter;
 
   } catch (error) {
