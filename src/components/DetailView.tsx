@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { X, Play, Plus, Check, Star, Calendar, Clock, Users, Video, ChevronDown, MonitorPlay, Film, ExternalLink } from 'lucide-react';
 import { MediaDetail, MediaItem, Episode, CastMember, CrewMember } from '../types';
 import { getSeasonEpisodes } from '../services/tmdbService';
+import { generateEpisodeKey, generateMediaKey } from '../utils';
+import StarRating from './StarRating';
 import {
   BarChart,
   Bar,
@@ -22,6 +24,8 @@ interface DetailViewProps {
   isFavorite: boolean;
   isWatchlist: boolean;
   onCastClick: (personId: number) => void;
+  userRatings: { [key: string]: number };
+  onRate: (itemId: string, rating: number) => void;
 }
 
 const DetailView: React.FC<DetailViewProps> = ({ 
@@ -32,7 +36,9 @@ const DetailView: React.FC<DetailViewProps> = ({
   onToggleWatchlist,
   isFavorite,
   isWatchlist,
-  onCastClick
+  onCastClick,
+  userRatings,
+  onRate
 }) => {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
@@ -190,6 +196,18 @@ const DetailView: React.FC<DetailViewProps> = ({
               </a>
 
             </div>
+
+            {/* User Rating Section */}
+            <div className="mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-500">
+              <div className="bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-4 inline-block">
+                <p className="text-sm text-slate-400 mb-2 font-medium">Your Rating:</p>
+                <StarRating
+                  value={userRatings[generateMediaKey(item.media_type as 'movie' | 'tv', item.id)] || 0}
+                  onChange={(rating) => onRate(generateMediaKey(item.media_type as 'movie' | 'tv', item.id), rating)}
+                  size={24}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -323,29 +341,41 @@ const DetailView: React.FC<DetailViewProps> = ({
 
                       {/* Episode List */}
                       <div className="space-y-3 max-h-[500px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 pr-2">
-                          {episodes.map(ep => (
-                              <div key={ep.id} className="bg-slate-900/50 p-3 rounded-xl border border-white/5 flex gap-3 group hover:border-cyan-500/30 transition-all">
-                                  <div className="w-24 aspect-video bg-slate-800 rounded-lg overflow-hidden shrink-0 relative">
-                                      {ep.still_path ? (
-                                          <img src={`https://image.tmdb.org/t/p/w200${ep.still_path}`} alt={ep.name} className="w-full h-full object-cover" />
-                                      ) : (
-                                          <div className="w-full h-full flex items-center justify-center text-slate-600"><Film size={16} /></div>
-                                      )}
-                                      <div className="absolute top-1 right-1 bg-black/60 text-[10px] text-white px-1.5 rounded font-bold backdrop-blur-sm">
-                                          {ep.vote_average.toFixed(1)}
+                          {episodes.map(ep => {
+                              const episodeKey = generateEpisodeKey(item.id, ep.season_number, ep.episode_number);
+                              return (
+                              <div key={ep.id} className="bg-slate-900/50 p-3 rounded-xl border border-white/5 group hover:border-cyan-500/30 transition-all">
+                                  <div className="flex gap-3 mb-2">
+                                      <div className="w-24 aspect-video bg-slate-800 rounded-lg overflow-hidden shrink-0 relative">
+                                          {ep.still_path ? (
+                                              <img src={`https://image.tmdb.org/t/p/w200${ep.still_path}`} alt={ep.name} className="w-full h-full object-cover" />
+                                          ) : (
+                                              <div className="w-full h-full flex items-center justify-center text-slate-600"><Film size={16} /></div>
+                                          )}
+                                          <div className="absolute top-1 right-1 bg-black/60 text-[10px] text-white px-1.5 rounded font-bold backdrop-blur-sm">
+                                              {ep.vote_average.toFixed(1)}
+                                          </div>
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                          <div className="flex justify-between items-start">
+                                              <h4 className="text-slate-200 font-bold text-sm truncate group-hover:text-cyan-400 transition-colors">{ep.episode_number}. {ep.name}</h4>
+                                          </div>
+                                          <p className="text-slate-500 text-xs mt-1 line-clamp-2">{ep.overview}</p>
+                                          <div className="text-slate-600 text-[10px] mt-2 font-mono">
+                                              {ep.air_date}
+                                          </div>
                                       </div>
                                   </div>
-                                  <div className="flex-1 min-w-0">
-                                      <div className="flex justify-between items-start">
-                                          <h4 className="text-slate-200 font-bold text-sm truncate group-hover:text-cyan-400 transition-colors">{ep.episode_number}. {ep.name}</h4>
-                                      </div>
-                                      <p className="text-slate-500 text-xs mt-1 line-clamp-2">{ep.overview}</p>
-                                      <div className="text-slate-600 text-[10px] mt-2 font-mono">
-                                          {ep.air_date}
-                                      </div>
+                                  {/* Episode Rating */}
+                                  <div className="mt-2 pt-2 border-t border-white/5">
+                                      <StarRating
+                                          value={userRatings[episodeKey] || 0}
+                                          onChange={(rating) => onRate(episodeKey, rating)}
+                                          size={14}
+                                      />
                                   </div>
                               </div>
-                          ))}
+                          )})}
                       </div>
 
                   </div>
