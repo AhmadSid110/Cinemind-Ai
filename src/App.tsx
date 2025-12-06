@@ -62,8 +62,11 @@ const App: React.FC = () => {
   // ---------- FIREBASE USER / SYNC STATE ----------
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
-  const [hasLoadedCloud, setHasLoadedCloud] = useState(false); // initial cloud load gate
-  const [isRankingView, setIsRankingView] = useState(false); // whether current search is a "ranking" style query
+  const [hasLoadedCloud, setHasLoadedCloud] = useState(false); // cloud-first guard
+
+  // ---------- AUTOCOMPLETE STATE ----------
+  const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
@@ -96,7 +99,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const unsub = subscribeToAuthChanges(async (user) => {
       setCurrentUser(user);
-      setHasLoadedCloud(false);
+      setHasLoadedCloud(false); // reset on any auth change
 
       if (!user) return;
 
@@ -122,6 +125,7 @@ const App: React.FC = () => {
             userRatings: nextUserRatings,
           }));
 
+          // keep localStorage in sync with cloud
           localStorage.setItem('favorites', JSON.stringify(nextFavorites));
           localStorage.setItem('watchlist', JSON.stringify(nextWatchlist));
           localStorage.setItem('userRatings', JSON.stringify(nextUserRatings));
@@ -146,7 +150,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const sync = async () => {
       if (!currentUser) return;
-      if (!hasLoadedCloud) return;
+      if (!hasLoadedCloud) return; // wait for initial cloud load
 
       try {
         setIsSyncingCloud(true);
@@ -178,43 +182,45 @@ const App: React.FC = () => {
     state.userRatings,
   ]);
 
-  // ---------- HELPERS TO CLASSIFY QUERY ----------
+  // ---------- AUTOCOMPLETE EFFECT ----------
+  useEffect(() => {
+    const q = state.searchQuery.trim();
+    if (!state.tmdbKey || q.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
 
-  // “Rick and Morty”, “Into the Badlands” etc → direct TMDB search, no AI
-  const isPlainTitleQuery = (q: string) => {
-    const trimmed = q.trim();
-    if (!trimmed) return false;
-    const words = trimmed.split(/\s+/);
-    const lower = trimmed.toLowerCase();
+    let cancelled = false;
+    (async () => {
+      try {
+        const sugg = await tmdb.getAutocompleteSuggestions(
+          state.tmdbKey,
+          q,
+          8
+        );
+        if (!cancelled) {
+          setSuggestions(sugg);
+          setShowSuggestions(sugg.length > 0);
+        }
+      } catch (err) {
+        console.error('Autocomplete error:', err);
+        if (!cancelled) {
+          setSuggestions([]);
+          setShowSuggestions(false);
+        }
+      }
+    })();
 
-    // Words that imply "command" style, not direct title
-    const hasControlWords = /\b(top|best|rank|ranking|episode|episodes|season|seasons)\b/.test(
-      lower
-    );
-    const hasCategoryWords = /\b(movie|movies|show|shows|series|tv)\b/.test(lower);
-
-    return words.length <= 4 && !hasControlWords && !hasCategoryWords;
-  };
-
-  // “top 10…”, “best…”, “highest rated…” etc → ranking mode
-  const isRankingQueryText = (q: string) => {
-    const lower = q.toLowerCase();
-    return /\b(top|best|highest rated|top-rated|top rated)\b/.test(lower);
-  };
-
-  const extractTopNFromQuery = (q: string): number | null => {
-    const match = q.match(/\btop\s+(\d+)\b/i);
-    if (!match) return null;
-    const n = parseInt(match[1], 10);
-    if (Number.isNaN(n)) return null;
-    return Math.max(1, Math.min(n, 100)); // clamp 1–100
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [state.searchQuery, state.tmdbKey]);
 
   // ---------- ACTIONS ----------
 
   const loadTrending = async () => {
     if (!state.tmdbKey) return;
-    setIsRankingView(false);
     setState((prev) => ({
       ...prev,
       isLoading: true,
@@ -240,46 +246,85 @@ const App: React.FC = () => {
     }
   };
 
+  // Heuristic: decide if query is "AI-style" vs "simple title"
+  const isAiQuery = (q: string) => {
+    const lower = q.toLowerCase();
+    const commandWords = [
+      'top',
+      'best',
+      'worst',
+      'underrated',
+      'overrated',
+      'like',
+      'similar',
+      'recommend',
+      'suggest',
+      'where',
+      'with',
+      'starring',
+      'movies about',
+      'shows about',
+      'episodes',
+    ];
+
+    if (q.length > 40) return true;
+    return commandWords.some((w) => lower.includes(w));
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    const rawQuery = state.searchQuery.trim();
-    if (!rawQuery || !state.tmdbKey) return;
+    const query = state.searchQuery.trim();
+    if (!query || !state.tmdbKey) return;
 
-    // 1) DIRECT TITLE SEARCH (NO AI) → better simple “Rick and Morty” results
-    if (isPlainTitleQuery(rawQuery)) {
-      setIsRankingView(false);
-      setState((prev) => ({
-        ...prev,
-        isLoading: true,
-        error: null,
-        aiExplanation: null,
-      }));
+    setShowSuggestions(false);
 
+    // ---------- SIMPLE TITLE SEARCH (NO AI) ----------
+    if (!isAiQuery(query)) {
       try {
-        const directResults = await tmdb.searchMulti(state.tmdbKey, rawQuery);
         setState((prev) => ({
           ...prev,
-          searchResults: directResults,
+          isLoading: true,
+          error: null,
+          aiExplanation: null,
+        }));
+
+        const raw = await tmdb.searchMulti(state.tmdbKey, query);
+
+        // Keep only movies/TV in results; sort by popularity
+        const filtered = (raw || []).filter(
+          (i: any) =>
+            i.media_type === 'movie' || i.media_type === 'tv'
+        );
+
+        filtered.sort((a: any, b: any) => {
+          const pa = a.popularity ?? 0;
+          const pb = b.popularity ?? 0;
+          return pb - pa;
+        });
+
+        setState((prev) => ({
+          ...prev,
+          searchResults: filtered,
           isLoading: false,
           view: 'search',
-          aiExplanation: `Direct search results for "${rawQuery}".`,
+          aiExplanation: `Direct search results for "${query}" from TMDB.`,
         }));
-      } catch (err) {
-        console.error(err);
+      } catch (e) {
+        console.error(e);
         setState((prev) => ({
           ...prev,
           isLoading: false,
           error:
-            'Sorry, I had trouble searching that title. Please try again or check your TMDB key.',
+            'Sorry, I had trouble finding that. Try again or check your TMDB key.',
         }));
       }
       return;
     }
 
-    // 2) AI SEARCH (Gemini / OpenAI) FOR MORE COMPLEX QUERIES
+    // ---------- AI-POWERED SEARCH (Gemini or OpenAI) ----------
     if (!state.geminiKey && !state.openaiKey) {
       alert(
-        'Please add your Gemini or OpenAI API Key in settings to use AI-powered search.'
+        'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
       );
       setIsSettingsOpen(true);
       return;
@@ -293,39 +338,26 @@ const App: React.FC = () => {
     }));
 
     try {
-      // AI analysis: OpenAI preferred if available
+      // Try OpenAI first if available, fallback to Gemini
       let analysis: GeminiFilter;
       if (state.openaiKey) {
-        analysis = await analyzeQueryWithOpenAI(rawQuery, state.openaiKey);
+        analysis = await analyzeQueryWithOpenAI(
+          query,
+          state.openaiKey
+        );
       } else {
-        analysis = await analyzeQuery(rawQuery, state.geminiKey);
+        analysis = await analyzeQuery(query, state.geminiKey);
       }
 
       let results: MediaItem[] = [];
       let explanation =
         analysis.explanation || 'Results based on your search.';
 
-      const rankingByText = isRankingQueryText(rawQuery);
-      const isEpisodeRanking = analysis.searchType === 'episode_ranking';
-      let rankingIntent = rankingByText || isEpisodeRanking;
-
-      // determine desired limit (from AI or "top 50 ..." etc)
-      let requestedLimit =
-        (analysis.limit && analysis.limit > 0 ? analysis.limit : 20) || 20;
-      const topN = extractTopNFromQuery(rawQuery);
-      if (topN && topN > requestedLimit) {
-        requestedLimit = topN;
-      }
-      requestedLimit = Math.max(1, Math.min(requestedLimit, 100));
-
-      // 2.a) TRENDING
-      if (analysis.searchType === 'trending') {
-        rankingIntent = false;
-        results = await tmdb.getTrending(state.tmdbKey);
-      }
-
-      // 2.b) EPISODE RANKING
-      else if (isEpisodeRanking && analysis.query) {
+      // Episode ranking
+      if (
+        analysis.searchType === 'episode_ranking' &&
+        analysis.query
+      ) {
         explanation = `Finding top ranked episodes for "${analysis.query}"...`;
         setState((prev) => ({ ...prev, aiExplanation: explanation }));
 
@@ -336,7 +368,10 @@ const App: React.FC = () => {
         );
         if (!showId) throw new Error('Could not find that TV show.');
 
-        const seasons = await tmdb.getShowSeasons(state.tmdbKey, showId);
+        const seasons = await tmdb.getShowSeasons(
+          state.tmdbKey,
+          showId
+        );
 
         const fetchPromises = seasons
           .filter((s) => s.season_number > 0)
@@ -356,8 +391,9 @@ const App: React.FC = () => {
           (a, b) => b.vote_average - a.vote_average
         );
 
-        const episodeLimit = Math.min(requestedLimit, sorted.length);
-        results = sorted.slice(0, episodeLimit).map((ep) => ({
+        const desired = analysis.limit || 10;
+
+        results = sorted.slice(0, desired).map((ep) => ({
           id: ep.id,
           name: ep.name,
           poster_path: null,
@@ -371,10 +407,8 @@ const App: React.FC = () => {
           episode_number: ep.episode_number,
         }));
         explanation = `Top ${results.length} highest-rated episodes of ${analysis.query}.`;
-      }
-
-      // 2.c) GENERAL SEARCH / DISCOVERY (TOP X, FILTERS, ETC.)
-      else {
+      } else {
+        // General discovery / ranking search
         let personId = null;
         if (analysis.with_people) {
           personId = await tmdb.getPersonId(
@@ -384,7 +418,6 @@ const App: React.FC = () => {
         }
 
         const params: any = {
-          sort_by: analysis.sort_by || 'popularity.desc',
           ...(analysis.genres && {
             with_genres: analysis.genres.join(','),
           }),
@@ -398,48 +431,58 @@ const App: React.FC = () => {
           }),
         };
 
-        // If query looks like ranking ("top 50 sci fi movies"), bias towards vote_average.desc
-        if (rankingIntent) {
-          params.sort_by = 'vote_average.desc';
-          // IMPORTANT: remove tiny-vote noise
-          params['vote_count.gte'] = '500';
-        }
+        // Tune ranking-style queries: high rating + enough vote count
+        const lower = query.toLowerCase();
+        const looksLikeRanking =
+          /top|best|highest rated|top rated/.test(lower);
 
-        if (analysis.media_type) {
-          // Fetch multiple pages if we need more than 20 items (TMDB page size)
-          const pageSize = 20;
-          const pagesNeeded = Math.ceil(requestedLimit / pageSize);
-          const all: MediaItem[] = [];
-
-          for (let page = 1; page <= pagesNeeded; page++) {
-            const pageParams = { ...params, page: String(page) };
-            const pageResults = await tmdb.discoverMedia(
-              state.tmdbKey,
-              analysis.media_type,
-              pageParams
-            );
-            all.push(...pageResults);
-            if (all.length >= requestedLimit) break;
+        if (looksLikeRanking) {
+          if (!analysis.sort_by) {
+            params.sort_by = 'vote_average.desc';
+          } else {
+            params.sort_by = analysis.sort_by;
           }
 
-          results = all.slice(0, requestedLimit);
+          // filter out titles with only a few votes
+          if (!params['vote_count.gte']) {
+            params['vote_count.gte'] = 200; // good balance
+          }
         } else {
-          // Fallback: generic search
-          results = await tmdb.searchMulti(
-            state.tmdbKey,
-            analysis.query || rawQuery
-          );
+          params.sort_by = analysis.sort_by || 'popularity.desc';
         }
 
-        // For ranking-style queries (non-episode), ensure strict rating sort
-        if (rankingIntent && !isEpisodeRanking) {
-          results = [...results].sort(
-            (a, b) => (b.vote_average || 0) - (a.vote_average || 0)
+        const desired = analysis.limit || 20;
+        const maxPerPage = 20;
+        const maxPages = Math.min(
+          5,
+          Math.ceil(desired / maxPerPage)
+        );
+
+        if (analysis.media_type) {
+          // Fetch multiple pages if needed so "top 50" can be close to 50
+          const collected: MediaItem[] = [];
+          for (let page = 1; page <= maxPages; page++) {
+            const batch = await tmdb.discoverMedia(
+              state.tmdbKey,
+              analysis.media_type,
+              { ...params, page }
+            );
+            collected.push(...batch);
+            if (collected.length >= desired) break;
+          }
+          results = collected.slice(0, desired);
+        } else {
+          // Fallback generic multi search
+          const raw = await tmdb.searchMulti(
+            state.tmdbKey,
+            analysis.query || query
+          );
+          results = (raw || []).filter(
+            (i: any) =>
+              i.media_type === 'movie' || i.media_type === 'tv'
           );
         }
       }
-
-      setIsRankingView(rankingIntent);
 
       setState((prev) => ({
         ...prev,
@@ -450,7 +493,6 @@ const App: React.FC = () => {
       }));
     } catch (e) {
       console.error(e);
-      setIsRankingView(false);
       setState((prev) => ({
         ...prev,
         isLoading: false,
@@ -461,8 +503,8 @@ const App: React.FC = () => {
   };
 
   const handleCardClick = async (item: MediaItem) => {
-    // Simple alert for episode-ranking pseudo-items
     if ((item as any).season_number) {
+      // Episode from ranking list → show quick info instead of detail view
       alert(
         `${item.name}\nSeason ${
           (item as any).season_number
@@ -521,7 +563,10 @@ const App: React.FC = () => {
     }
   };
 
-  const toggleList = (listType: 'favorites' | 'watchlist', item: MediaItem) => {
+  const toggleList = (
+    listType: 'favorites' | 'watchlist',
+    item: MediaItem
+  ) => {
     setState((prev) => {
       const list = prev[listType];
       const exists = list.find((i) => i.id === item.id);
@@ -561,15 +606,31 @@ const App: React.FC = () => {
     }
   };
 
-  // ---------- GRID RENDER (with optional ranking numbers) ----------
-  const renderGrid = (items: MediaItem[], showRanks: boolean = false) => (
+  // ---------- AUTOCOMPLETE HANDLER ----------
+  const handleSuggestionClick = (item: MediaItem) => {
+    const title = (item as any).title || (item as any).name || '';
+    setState((prev) => ({
+      ...prev,
+      searchQuery: title,
+    }));
+    setShowSuggestions(false);
+
+    // Directly go to details for a super-snappy UX
+    handleCardClick(item);
+  };
+
+  // ---------- HELPERS ----------
+  const renderGrid = (
+    items: MediaItem[],
+    opts?: { showRank?: boolean }
+  ) => (
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-      {items.map((item, idx) => (
+      {items.map((item, index) => (
         <MediaCard
           key={`${item.id}-${(item as any).episode_number || 0}`}
           item={item}
           onClick={handleCardClick}
-          rank={showRanks ? idx + 1 : undefined}
+          rank={opts?.showRank ? index + 1 : undefined}
         />
       ))}
     </div>
@@ -603,38 +664,98 @@ const App: React.FC = () => {
             </span>
           </div>
 
-          {/* Search Bar */}
-          <form
-            onSubmit={handleSearch}
-            className="flex-1 max-w-2xl relative group"
-          >
-            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-              <Sparkles
-                className={`w-5 h-5 transition-colors ${
-                  state.isLoading
-                    ? 'animate-pulse text-cyan-400'
-                    : 'text-slate-500 group-focus-within:text-cyan-400'
-                }`}
+          {/* Search Bar + Autocomplete */}
+          <div className="flex-1 max-w-2xl relative">
+            <form
+              onSubmit={handleSearch}
+              className="relative group"
+              autoComplete="off"
+            >
+              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                <Sparkles
+                  className={`w-5 h-5 transition-colors ${
+                    state.isLoading
+                      ? 'animate-pulse text-cyan-400'
+                      : 'text-slate-500 group-focus-within:text-cyan-400'
+                  }`}
+                />
+              </div>
+              <input
+                type="text"
+                value={state.searchQuery}
+                onChange={(e) =>
+                  setState((prev) => ({
+                    ...prev,
+                    searchQuery: e.target.value,
+                  }))
+                }
+                onFocus={() => {
+                  if (suggestions.length > 0) setShowSuggestions(true);
+                }}
+                placeholder="Search titles or ask: “Top 10 dark sci-fi shows”"
+                className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
               />
-            </div>
-            <input
-              type="text"
-              value={state.searchQuery}
-              onChange={(e) =>
-                setState((prev) => ({
-                  ...prev,
-                  searchQuery: e.target.value,
-                }))
-              }
-              placeholder="Ask anything (e.g. 'Top 50 sci-fi movies', 'Rick and Morty', 'Best crime thrillers since 2010')"
-              className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
-            />
-            {state.isLoading && (
-              <div className="absolute inset-y-0 right-4 flex items-center">
-                <Loader2 className="animate-spin text-cyan-500" size={20} />
+              {state.isLoading && (
+                <div className="absolute inset-y-0 right-4 flex items-center">
+                  <Loader2
+                    className="animate-spin text-cyan-500"
+                    size={20}
+                  />
+                </div>
+              )}
+            </form>
+
+            {/* Autocomplete dropdown */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute mt-2 left-0 right-0 z-50 bg-slate-900/95 border border-white/10 rounded-2xl shadow-xl max-h-80 overflow-y-auto">
+                {suggestions.map((s, idx) => {
+                  const title = (s as any).title || (s as any).name;
+                  const date =
+                    (s as any).release_date ||
+                    (s as any).first_air_date;
+                  const year = date
+                    ? new Date(date).getFullYear()
+                    : 'N/A';
+                  const typeLabel =
+                    s.media_type === 'tv' ? 'Series' : 'Movie';
+
+                  return (
+                    <button
+                      key={`${s.id}-${idx}`}
+                      onClick={() => handleSuggestionClick(s)}
+                      className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-800/80 text-left"
+                    >
+                      <div className="w-8 h-8 rounded-md overflow-hidden bg-slate-800 flex-shrink-0">
+                        {s.poster_path || (s as any).still_path ? (
+                          <img
+                            src={`https://image.tmdb.org/t/p/w92${
+                              s.poster_path || (s as any).still_path
+                            }`}
+                            alt={title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-500">
+                            N/A
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium truncate">
+                          {title}
+                        </div>
+                        <div className="text-xs text-slate-400 flex items-center gap-2">
+                          <span>{typeLabel}</span>
+                          <span>•</span>
+                          <span>{year}</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
-          </form>
+          </div>
 
           {/* Right actions */}
           <div className="flex items-center gap-3">
@@ -784,7 +905,7 @@ const App: React.FC = () => {
             {/* Grid */}
             <div className="min-h-[300px]">
               {getFilteredLibrary().length > 0 ? (
-                renderGrid(getFilteredLibrary(), false)
+                renderGrid(getFilteredLibrary(), { showRank: false })
               ) : (
                 <div className="flex flex-col items-center justify-center h-80 text-slate-500 border-2 border-dashed border-slate-800/50 rounded-3xl bg-slate-900/20">
                   <Video size={48} className="mb-4 text-slate-700" />
@@ -803,7 +924,8 @@ const App: React.FC = () => {
               {state.view === 'trending' ? 'Trending Now' : 'Search Results'}
             </h2>
             {state.searchResults.length > 0 ? (
-              renderGrid(state.searchResults, isRankingView)
+              // show rank numbers in ALL search views
+              renderGrid(state.searchResults, { showRank: true })
             ) : (
               !state.isLoading && (
                 <div className="flex flex-col items-center justify-center py-32 text-slate-500">
@@ -901,7 +1023,12 @@ const App: React.FC = () => {
           localStorage.setItem('gemini_key', geminiKey);
           localStorage.setItem('openai_key', openaiKey);
 
-          setState((prev) => ({ ...prev, tmdbKey: key, geminiKey, openaiKey }));
+          setState((prev) => ({
+            ...prev,
+            tmdbKey: key,
+            geminiKey,
+            openaiKey,
+          }));
 
           if (currentUser) {
             try {
