@@ -1,4 +1,3 @@
-// src/App.tsx
 import React, { useState, useEffect } from 'react';
 import {
   Home,
@@ -63,7 +62,12 @@ const App: React.FC = () => {
   // ---------- FIREBASE USER / SYNC STATE ----------
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
-  const [hasLoadedCloud, setHasLoadedCloud] = useState(false); // <-- important
+  const [hasLoadedCloud, setHasLoadedCloud] = useState(false); // for cloud-first sync
+
+  // ---------- AUTOCOMPLETE STATE ----------
+  const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
+  const [isSuggestLoading, setIsSuggestLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
@@ -96,7 +100,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const unsub = subscribeToAuthChanges(async (user) => {
       setCurrentUser(user);
-      setHasLoadedCloud(false); // reset on any auth change
+      setHasLoadedCloud(false); // reset on auth change
 
       if (!user) return;
 
@@ -105,7 +109,7 @@ const App: React.FC = () => {
         const cloud = await loadUserData(user.uid);
 
         if (cloud) {
-          // CLOUD WINS: overwrite local state completely with server values
+          // CLOUD WINS initially
           const nextFavorites = cloud.favorites || [];
           const nextWatchlist = cloud.watchlist || [];
           const nextTmdbKey = cloud.tmdbKey || '';
@@ -123,7 +127,7 @@ const App: React.FC = () => {
             userRatings: nextUserRatings,
           }));
 
-          // keep localStorage exactly in sync with cloud
+          // mirror to localStorage
           localStorage.setItem('favorites', JSON.stringify(nextFavorites));
           localStorage.setItem('watchlist', JSON.stringify(nextWatchlist));
           localStorage.setItem('userRatings', JSON.stringify(nextUserRatings));
@@ -131,14 +135,13 @@ const App: React.FC = () => {
           if (nextGeminiKey) localStorage.setItem('gemini_key', nextGeminiKey);
           if (nextOpenaiKey) localStorage.setItem('openai_key', nextOpenaiKey);
         } else {
-          // No document yet: we'll upload current local state on first sync
-          console.log('[SYNC] No cloud doc yet, will push local as initial');
+          console.log('[SYNC] No cloud doc; will push local as initial state.');
         }
       } catch (err) {
         console.error('Error loading user cloud data:', err);
       } finally {
         setIsSyncingCloud(false);
-        setHasLoadedCloud(true); // we are allowed to sync now
+        setHasLoadedCloud(true);
       }
     });
 
@@ -149,7 +152,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const sync = async () => {
       if (!currentUser) return;
-      if (!hasLoadedCloud) return; // don't push until initial cloud load done
+      if (!hasLoadedCloud) return; // wait for initial load
 
       try {
         setIsSyncingCloud(true);
@@ -181,6 +184,37 @@ const App: React.FC = () => {
     state.userRatings,
   ]);
 
+  // ---------- AUTOCOMPLETE EFFECT (TMDB DIRECT) ----------
+  useEffect(() => {
+    if (!state.tmdbKey) return;
+    const query = state.searchQuery.trim();
+
+    if (query.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+
+    let active = true;
+    setIsSuggestLoading(true);
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const res = await tmdb.searchMulti(state.tmdbKey, query);
+        if (!active) return;
+        setSuggestions(res.slice(0, 8)); // top 8 suggestions
+      } catch (err) {
+        if (active) setSuggestions([]);
+      } finally {
+        if (active) setIsSuggestLoading(false);
+      }
+    }, 300); // 300ms debounce
+
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
+  }, [state.searchQuery, state.tmdbKey]);
+
   // ---------- ACTIONS ----------
 
   const loadTrending = async () => {
@@ -211,11 +245,55 @@ const App: React.FC = () => {
     }
   };
 
+  // Heuristic: detect simple title queries like "Rick and Morty"
+  const isSimpleTitleQuery = (q: string) => {
+    const trimmed = q.trim();
+    if (trimmed.length === 0) return false;
+    if (trimmed.length > 40) return false; // longer ones are usually natural language
+    const hasNumber = /\d/.test(trimmed);
+    if (hasNumber) return false;
+    const intentWords =
+      /\b(top|best|similar|like|recommend(ed)?|ranking|ranked|episodes?|season|movies?|shows?|list|watchlist)\b/i;
+    return !intentWords.test(trimmed);
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!state.searchQuery.trim() || !state.tmdbKey) return;
+    const query = state.searchQuery.trim();
+    if (!query || !state.tmdbKey) return;
 
-    // Check if we have at least one AI key
+    setShowSuggestions(false);
+
+    // 1) If it's a simple title query, go straight to TMDB search (no AI needed)
+    if (isSimpleTitleQuery(query)) {
+      try {
+        setState((prev) => ({
+          ...prev,
+          isLoading: true,
+          error: null,
+          aiExplanation: null,
+        }));
+        const results = await tmdb.searchMulti(state.tmdbKey, query);
+        setState((prev) => ({
+          ...prev,
+          searchResults: results,
+          isLoading: false,
+          view: 'search',
+          aiExplanation: `Direct search results for "${query}".`,
+        }));
+      } catch (err) {
+        console.error(err);
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error:
+            'There was a problem searching TMDB. Please check your key or try again.',
+        }));
+      }
+      return;
+    }
+
+    // 2) For natural-language / complex queries, require AI key
     if (!state.geminiKey && !state.openaiKey) {
       alert('Please add your Gemini or OpenAI API Key in settings to use AI Search.');
       setIsSettingsOpen(true);
@@ -237,7 +315,7 @@ const App: React.FC = () => {
       } else {
         analysis = await analyzeQuery(state.searchQuery, state.geminiKey);
       }
-      
+
       let results: MediaItem[] = [];
       let explanation =
         analysis.explanation || 'Results based on your search.';
@@ -447,6 +525,15 @@ const App: React.FC = () => {
     }
   };
 
+  // ---------- AUTOCOMPLETE CLICK ----------
+  const handleSuggestionClick = async (item: MediaItem) => {
+    setShowSuggestions(false);
+    // set search bar text to the clicked title
+    const title = (item as any).title || (item as any).name || '';
+    setState((prev) => ({ ...prev, searchQuery: title }));
+    await handleCardClick(item);
+  };
+
   // ---------- HELPERS ----------
   const renderGrid = (items: MediaItem[]) => (
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
@@ -488,7 +575,7 @@ const App: React.FC = () => {
             </span>
           </div>
 
-          {/* Search Bar */}
+          {/* Search Bar + AUTOCOMPLETE */}
           <form
             onSubmit={handleSearch}
             className="flex-1 max-w-2xl relative group"
@@ -511,12 +598,55 @@ const App: React.FC = () => {
                   searchQuery: e.target.value,
                 }))
               }
-              placeholder="What are you in the mood for? (e.g., 'Dark sci-fi movies like Interstellar')"
+              onFocus={() => {
+                if (suggestions.length > 0) setShowSuggestions(true);
+              }}
+              placeholder="Search titles or ask smartly (e.g., 'Dark sci-fi movies like Interstellar')"
               className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
             />
             {state.isLoading && (
               <div className="absolute inset-y-0 right-4 flex items-center">
                 <Loader2 className="animate-spin text-cyan-500" size={20} />
+              </div>
+            )}
+
+            {/* AUTOCOMPLETE DROPDOWN */}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute left-0 right-0 mt-2 bg-slate-950/95 border border-white/10 rounded-2xl shadow-xl max-h-80 overflow-y-auto z-50">
+                {isSuggestLoading && (
+                  <div className="px-3 py-2 text-xs text-slate-400 flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Loading suggestions…</span>
+                  </div>
+                )}
+                {suggestions.map((item) => (
+                  <button
+                    key={`${item.id}-${item.media_type}`}
+                    type="button"
+                    onClick={() => handleSuggestionClick(item)}
+                    className="w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-slate-800/80 transition text-sm"
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-medium text-slate-100 truncate max-w-[220px]">
+                        {(item as any).title || (item as any).name}
+                      </span>
+                      <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                        {item.media_type === 'movie'
+                          ? 'Movie'
+                          : item.media_type === 'tv'
+                          ? 'Series'
+                          : 'Person / Other'}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setShowSuggestions(false)}
+                  className="w-full text-center text-[11px] text-slate-500 py-1 border-t border-slate-800 hover:text-slate-300"
+                >
+                  Close suggestions
+                </button>
               </div>
             )}
           </form>
@@ -605,7 +735,7 @@ const App: React.FC = () => {
                 <Library className="text-cyan-500" /> My Library
               </h2>
 
-              {/* Tab Switcher */}
+            {/* Tab Switcher */}
               <div className="bg-slate-900/50 p-1.5 rounded-xl flex gap-1 border border-white/5 backdrop-blur-md">
                 <button
                   onClick={() => setLibraryTab('favorites')}
