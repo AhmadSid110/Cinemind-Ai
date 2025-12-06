@@ -20,6 +20,7 @@ import {
 import { MediaItem, AppState, Episode, GeminiFilter } from './types';
 import * as tmdb from './services/tmdbService';
 import { analyzeQuery } from './services/geminiService';
+import { analyzeQueryWithOpenAI } from './services/openaiService';
 import MediaCard from './components/MediaCard';
 import DetailView from './components/DetailView';
 import PersonView from './components/PersonView';
@@ -41,6 +42,7 @@ const App: React.FC = () => {
     searchQuery: '',
     tmdbKey: localStorage.getItem('tmdb_key') || '',
     geminiKey: localStorage.getItem('gemini_key') || process.env.API_KEY || '',
+    openaiKey: localStorage.getItem('openai_key') || '',
     searchResults: [],
     selectedItem: null,
     selectedPerson: null,
@@ -49,6 +51,7 @@ const App: React.FC = () => {
     favorites: JSON.parse(localStorage.getItem('favorites') || '[]'),
     watchlist: JSON.parse(localStorage.getItem('watchlist') || '[]'),
     aiExplanation: null,
+    userRatings: JSON.parse(localStorage.getItem('userRatings') || '{}'),
   });
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(!state.tmdbKey);
@@ -66,7 +69,8 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('favorites', JSON.stringify(state.favorites));
     localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
-  }, [state.favorites, state.watchlist]);
+    localStorage.setItem('userRatings', JSON.stringify(state.userRatings));
+  }, [state.favorites, state.watchlist, state.userRatings]);
 
   useEffect(() => {
     if (state.tmdbKey) {
@@ -75,7 +79,10 @@ const App: React.FC = () => {
     if (state.geminiKey) {
       localStorage.setItem('gemini_key', state.geminiKey);
     }
-  }, [state.tmdbKey, state.geminiKey]);
+    if (state.openaiKey) {
+      localStorage.setItem('openai_key', state.openaiKey);
+    }
+  }, [state.tmdbKey, state.geminiKey, state.openaiKey]);
 
   // ---------- LOAD TRENDING WHEN TMDB KEY AVAILABLE ----------
   useEffect(() => {
@@ -103,6 +110,8 @@ const App: React.FC = () => {
           const nextWatchlist = cloud.watchlist || [];
           const nextTmdbKey = cloud.tmdbKey || '';
           const nextGeminiKey = cloud.geminiKey || '';
+          const nextOpenaiKey = cloud.openaiKey || '';
+          const nextUserRatings = cloud.userRatings || {};
 
           setState((prev) => ({
             ...prev,
@@ -110,13 +119,17 @@ const App: React.FC = () => {
             watchlist: nextWatchlist,
             tmdbKey: nextTmdbKey || prev.tmdbKey,
             geminiKey: nextGeminiKey || prev.geminiKey,
+            openaiKey: nextOpenaiKey || prev.openaiKey,
+            userRatings: nextUserRatings,
           }));
 
           // keep localStorage exactly in sync with cloud
           localStorage.setItem('favorites', JSON.stringify(nextFavorites));
           localStorage.setItem('watchlist', JSON.stringify(nextWatchlist));
+          localStorage.setItem('userRatings', JSON.stringify(nextUserRatings));
           if (nextTmdbKey) localStorage.setItem('tmdb_key', nextTmdbKey);
           if (nextGeminiKey) localStorage.setItem('gemini_key', nextGeminiKey);
+          if (nextOpenaiKey) localStorage.setItem('openai_key', nextOpenaiKey);
         } else {
           // No document yet: we'll upload current local state on first sync
           console.log('[SYNC] No cloud doc yet, will push local as initial');
@@ -145,6 +158,8 @@ const App: React.FC = () => {
           watchlist: state.watchlist,
           tmdbKey: state.tmdbKey,
           geminiKey: state.geminiKey,
+          openaiKey: state.openaiKey,
+          userRatings: state.userRatings,
         });
       } catch (err) {
         console.error('Error syncing to Firestore:', err);
@@ -162,6 +177,8 @@ const App: React.FC = () => {
     state.watchlist,
     state.tmdbKey,
     state.geminiKey,
+    state.openaiKey,
+    state.userRatings,
   ]);
 
   // ---------- ACTIONS ----------
@@ -198,8 +215,9 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!state.searchQuery.trim() || !state.tmdbKey) return;
 
-    if (!state.geminiKey) {
-      alert('Please add your Gemini API Key in settings to use AI Search.');
+    // Check if we have at least one AI key
+    if (!state.geminiKey && !state.openaiKey) {
+      alert('Please add your Gemini or OpenAI API Key in settings to use AI Search.');
       setIsSettingsOpen(true);
       return;
     }
@@ -212,10 +230,14 @@ const App: React.FC = () => {
     }));
 
     try {
-      const analysis: GeminiFilter = await analyzeQuery(
-        state.searchQuery,
-        state.geminiKey
-      );
+      // Try OpenAI first if available, fallback to Gemini
+      let analysis: GeminiFilter;
+      if (state.openaiKey) {
+        analysis = await analyzeQueryWithOpenAI(state.searchQuery, state.openaiKey);
+      } else {
+        analysis = await analyzeQuery(state.searchQuery, state.geminiKey);
+      }
+      
       let results: MediaItem[] = [];
       let explanation =
         analysis.explanation || 'Results based on your search.';
@@ -394,6 +416,17 @@ const App: React.FC = () => {
         : [...list, item];
       return { ...prev, [listType]: newList };
     });
+  };
+
+  // ---------- RATING HANDLER ----------
+  const handleRating = (itemId: string, rating: number) => {
+    setState((prev) => ({
+      ...prev,
+      userRatings: {
+        ...prev.userRatings,
+        [itemId]: rating,
+      },
+    }));
   };
 
   // ---------- AUTH HANDLERS ----------
@@ -727,6 +760,8 @@ const App: React.FC = () => {
             (w) => w.id === state.selectedItem?.id
           )}
           onCastClick={handleCastClick}
+          userRatings={state.userRatings}
+          onRate={handleRating}
         />
       )}
 
@@ -745,17 +780,20 @@ const App: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         currentKey={state.tmdbKey}
         currentGeminiKey={state.geminiKey}
-        onSave={async (key, geminiKey) => {
+        currentOpenAIKey={state.openaiKey}
+        onSave={async (key, geminiKey, openaiKey) => {
           localStorage.setItem('tmdb_key', key);
           localStorage.setItem('gemini_key', geminiKey);
+          localStorage.setItem('openai_key', openaiKey);
 
-          setState((prev) => ({ ...prev, tmdbKey: key, geminiKey }));
+          setState((prev) => ({ ...prev, tmdbKey: key, geminiKey, openaiKey }));
 
           if (currentUser) {
             try {
               await saveUserData(currentUser.uid, {
                 tmdbKey: key,
                 geminiKey,
+                openaiKey,
               });
             } catch (err) {
               console.error('Error saving keys to Firestore:', err);

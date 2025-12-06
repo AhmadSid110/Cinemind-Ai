@@ -5,7 +5,8 @@ import { validateKey } from '../services/tmdbService';
 interface SettingsModalProps {
   currentKey: string;
   currentGeminiKey: string;
-  onSave: (tmdbKey: string, geminiKey: string) => void;
+  currentOpenAIKey: string;
+  onSave: (tmdbKey: string, geminiKey: string, openaiKey: string) => void;
   onClose: () => void;
   isOpen: boolean;
 }
@@ -13,6 +14,7 @@ interface SettingsModalProps {
 const SettingsModal: React.FC<SettingsModalProps> = ({
   currentKey,
   currentGeminiKey,
+  currentOpenAIKey,
   onSave,
   onClose,
   isOpen,
@@ -20,6 +22,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   // Local input state, initialized from props…
   const [keyInput, setKeyInput] = useState(currentKey || '');
   const [geminiKeyInput, setGeminiKeyInput] = useState(currentGeminiKey || '');
+  const [openaiKeyInput, setOpenaiKeyInput] = useState(currentOpenAIKey || '');
   const [status, setStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
 
   // …and kept in sync if props change (e.g. when Firebase finishes loading)
@@ -31,11 +34,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     setGeminiKeyInput(currentGeminiKey || '');
   }, [currentGeminiKey]);
 
+  useEffect(() => {
+    setOpenaiKeyInput(currentOpenAIKey || '');
+  }, [currentOpenAIKey]);
+
   if (!isOpen) return null;
 
   const handleSave = async () => {
     const trimmedTmdb = keyInput.trim();
     const trimmedGemini = geminiKeyInput.trim();
+    const trimmedOpenAI = openaiKeyInput.trim();
 
     if (!trimmedTmdb) {
       setStatus('invalid');
@@ -50,7 +58,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       if (isValid) {
         setStatus('valid');
         // Let parent (App.tsx) update state + Firebase
-        onSave(trimmedTmdb, trimmedGemini);
+        onSave(trimmedTmdb, trimmedGemini, trimmedOpenAI);
 
         // Close after a short success flash
         setTimeout(() => {
@@ -109,7 +117,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="space-y-4 mb-6 pt-4 border-t border-slate-800">
           <div>
             <label className="text-xs font-bold uppercase text-slate-500 block mb-1 flex items-center gap-1">
-              <Sparkles size={12} /> Google Gemini API Key
+              <Sparkles size={12} /> Google Gemini API Key (Optional)
             </label>
             <input
               type="text"
@@ -123,7 +131,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             />
           </div>
           <p className="text-slate-500 text-xs">
-            Required for Natural Language Search. Get it from{' '}
+            Optional for Natural Language Search. Get it from{' '}
             <a
               href="https://aistudio.google.com/app/apikey"
               target="_blank"
@@ -131,6 +139,36 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               className="text-purple-400 hover:underline"
             >
               Google AI Studio
+            </a>
+            .
+          </p>
+        </div>
+
+        {/* OpenAI Section */}
+        <div className="space-y-4 mb-6 pt-4 border-t border-slate-800">
+          <div>
+            <label className="text-xs font-bold uppercase text-slate-500 block mb-1 flex items-center gap-1">
+              <Sparkles size={12} /> OpenAI API Key (Optional)
+            </label>
+            <input
+              type="text"
+              value={openaiKeyInput}
+              onChange={(e) => {
+                setOpenaiKeyInput(e.target.value);
+              }}
+              placeholder="sk-..."
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-emerald-500 transition font-mono text-xs"
+            />
+          </div>
+          <p className="text-slate-500 text-xs">
+            Optional for Natural Language Search (alternative to Gemini). Get it from{' '}
+            <a
+              href="https://platform.openai.com/api-keys"
+              target="_blank"
+              rel="noreferrer"
+              className="text-emerald-400 hover:underline"
+            >
+              OpenAI Platform
             </a>
             .
           </p>
