@@ -1,104 +1,79 @@
-import { MediaItem, MediaDetail, Episode, Season, PersonDetail } from '../types';
+import {
+  MediaItem,
+  MediaDetail,
+  Episode,
+  Season,
+  PersonDetail,
+} from '../types';
 
 const BASE_URL = 'https://api.themoviedb.org/3';
 
-// Helper to construct URL with API Key
+/* =========================================================
+   Helper: Build URL with api_key + params
+========================================================= */
 const getUrl = (
   endpoint: string,
   apiKey: string,
-  params: Record<string, string> = {}
+  params: Record<string, string | number> = {}
 ) => {
   const url = new URL(`${BASE_URL}${endpoint}`);
   url.searchParams.append('api_key', apiKey);
-  Object.keys(params).forEach((key) =>
-    url.searchParams.append(key, params[key])
-  );
+  Object.entries(params).forEach(([key, value]) => {
+    url.searchParams.append(key, String(value));
+  });
   return url.toString();
 };
 
-/**
- * Validate TMDB key, with detailed reason for failure.
- */
+/* =========================================================
+   Validate TMDB API Key
+========================================================= */
 export const validateKey = async (
   apiKey: string
 ): Promise<{ ok: boolean; reason?: string }> => {
   try {
-    const trimmed = apiKey.trim(); // avoid trailing spaces issues
-    if (!trimmed) {
-      return { ok: false, reason: 'empty-key' };
-    }
+    const trimmed = apiKey.trim();
+    if (!trimmed) return { ok: false, reason: 'empty-key' };
 
     const res = await fetch(getUrl('/configuration', trimmed));
-
-    if (res.ok) {
-      return { ok: true };
-    }
+    if (res.ok) return { ok: true };
 
     let body: any = {};
     try {
       body = await res.json();
-    } catch {
-      // ignore JSON parse error
-    }
+    } catch {}
 
-    const statusMsg =
-      body?.status_message || body?.statusCode || `HTTP ${res.status}`;
-
-    console.error('TMDB validateKey failed:', {
-      status: res.status,
-      statusText: res.statusText,
-      statusMsg,
-      body,
-    });
-
-    return { ok: false, reason: statusMsg };
+    return {
+      ok: false,
+      reason: body?.status_message || `HTTP ${res.status}`,
+    };
   } catch (e: any) {
-    console.error('TMDB validateKey network error:', e);
     return { ok: false, reason: e?.message || 'network-error' };
   }
 };
 
-/**
- * Trending content (used for home screen).
- * (mixed movies + tv, TMDB returns `media_type` for each item)
- */
-export const getTrending = async (apiKey: string): Promise<MediaItem[]> => {
+/* =========================================================
+   Trending (Movies + TV together)
+========================================================= */
+export const getTrending = async (
+  apiKey: string
+): Promise<MediaItem[]> => {
   const res = await fetch(
     getUrl('/trending/all/day', apiKey, { language: 'en-US' })
   );
+  if (!res.ok) throw new Error('Trending fetch failed');
   const data = await res.json();
   return data.results || [];
 };
 
-/**
- * Generic multi-search (movies, TV, people, etc.).
- */
+/* =========================================================
+   Plain Title Search (MOST important for your fix)
+---------------------------------------------------------
+   - Used when searching "Rick and Morty", "Badlands", etc.
+   - DO NOT add filters here (TMDB relevance is best)
+========================================================= */
 export const searchMulti = async (
   apiKey: string,
   query: string
-): Promise<MediaItem[]> => {
-  const res = await fetch(
-    getUrl('/search/multi', apiKey, {
-      query,
-      include_adult: 'false',
-      language: 'en-US',
-      page: '1',
-    })
-  );
-  const data = await res.json();
-  return data.results || [];
-};
-
-/**
- * Autocomplete suggestions for the search box.
- * - Uses /search/multi
- * - Filters to movies + TV only
- * - Returns only top `limit` items (for dropdown).
- */
-export const getAutocompleteSuggestions = async (
-  apiKey: string,
-  query: string,
-  limit: number = 8
 ): Promise<MediaItem[]> => {
   const trimmed = query.trim();
   if (!trimmed) return [];
@@ -108,52 +83,83 @@ export const getAutocompleteSuggestions = async (
       query: trimmed,
       include_adult: 'false',
       language: 'en-US',
-      page: '1',
+      page: 1,
     })
   );
 
+  if (!res.ok) throw new Error('Search failed');
   const data = await res.json();
-  const all: any[] = data.results || [];
 
-  // Only keep movies & TV shows for suggestions
-  const filtered = all.filter(
-    (item) => item.media_type === 'movie' || item.media_type === 'tv'
+  return (data.results || []).filter(
+    (r: MediaItem) =>
+      r.media_type === 'movie' || r.media_type === 'tv'
   );
-
-  return filtered.slice(0, limit) as MediaItem[];
 };
 
-/**
- * Discover API for AI-powered filtering (genres, year, etc.).
- */
+/* =========================================================
+   Autocomplete Suggestions (Dropdown)
+========================================================= */
+export const getAutocompleteSuggestions = async (
+  apiKey: string,
+  query: string,
+  limit = 8
+): Promise<MediaItem[]> => {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const res = await fetch(
+    getUrl('/search/multi', apiKey, {
+      query: trimmed,
+      include_adult: 'false',
+      language: 'en-US',
+      page: 1,
+    })
+  );
+
+  if (!res.ok) return [];
+  const data = await res.json();
+
+  return (data.results || [])
+    .filter(
+      (i: MediaItem) =>
+        (i.media_type === 'movie' || i.media_type === 'tv') &&
+        (i.title || i.name)
+    )
+    .slice(0, limit);
+};
+
+/* =========================================================
+   Discover (Used for AI “Top Rated Sci-Fi”, etc.)
+========================================================= */
 export const discoverMedia = async (
   apiKey: string,
   type: 'movie' | 'tv',
   params: Record<string, any>
 ): Promise<MediaItem[]> => {
-  // Convert all params to strings for URLSearchParams
-  const stringParams: Record<string, string> = {
-    include_adult: 'false',
-    include_video: 'false',
+  const baseParams: Record<string, string | number> = {
+    include_adult: false,
+    include_video: false,
     language: 'en-US',
-    page: '1',
+    page: 1,
+    ...params,
   };
 
-  Object.entries(params).forEach(([key, value]) => {
-    stringParams[key] = String(value);
-  });
+  const res = await fetch(
+    getUrl(`/discover/${type}`, apiKey, baseParams)
+  );
 
-  const res = await fetch(getUrl(`/discover/${type}`, apiKey, stringParams));
+  if (!res.ok) throw new Error('Discover failed');
   const data = await res.json();
+
   return (data.results || []).map((item: any) => ({
     ...item,
     media_type: type,
   }));
 };
 
-/**
- * Full details for a movie or TV show.
- */
+/* =========================================================
+   Movie / TV Details
+========================================================= */
 export const getDetails = async (
   apiKey: string,
   type: 'movie' | 'tv',
@@ -161,17 +167,19 @@ export const getDetails = async (
 ): Promise<MediaDetail> => {
   const res = await fetch(
     getUrl(`/${type}/${id}`, apiKey, {
-      append_to_response: 'credits,videos,recommendations,external_ids',
+      append_to_response:
+        'credits,videos,recommendations,external_ids',
     })
   );
-  if (!res.ok) throw new Error('Failed to fetch details');
+
+  if (!res.ok) throw new Error('Details fetch failed');
   const data = await res.json();
   return { ...data, media_type: type };
 };
 
-/**
- * Person details + combined credits (used for cast profile view).
- */
+/* =========================================================
+   Person Details
+========================================================= */
 export const getPersonDetails = async (
   apiKey: string,
   id: number
@@ -181,30 +189,32 @@ export const getPersonDetails = async (
       append_to_response: 'combined_credits',
     })
   );
-  if (!res.ok) throw new Error('Failed to fetch person details');
-  const data = await res.json();
-  return data;
+  if (!res.ok) throw new Error('Person fetch failed');
+  return await res.json();
 };
 
-/**
- * Helper to find first matching movie/TV show ID by name
- * (used in AI "top episodes" flow).
- */
+/* =========================================================
+   Find Movie / TV ID by Name (AI episode search)
+========================================================= */
 export const findIdByName = async (
   apiKey: string,
   type: 'movie' | 'tv',
   name: string
 ): Promise<number | null> => {
   const res = await fetch(
-    getUrl(`/search/${type}`, apiKey, { query: name })
+    getUrl(`/search/${type}`, apiKey, {
+      query: name,
+    })
   );
+  if (!res.ok) return null;
+
   const data = await res.json();
-  if (data.results && data.results.length > 0) {
-    return data.results[0].id;
-  }
-  return null;
+  return data?.results?.[0]?.id ?? null;
 };
 
+/* =========================================================
+   Seasons + Episodes (for episode ranking)
+========================================================= */
 export const getShowSeasons = async (
   apiKey: string,
   showId: number
@@ -226,6 +236,9 @@ export const getSeasonEpisodes = async (
   return data.episodes || [];
 };
 
+/* =========================================================
+   Person Search (AI filters)
+========================================================= */
 export const getPersonId = async (
   apiKey: string,
   name: string
@@ -233,9 +246,8 @@ export const getPersonId = async (
   const res = await fetch(
     getUrl('/search/person', apiKey, { query: name })
   );
+
+  if (!res.ok) return null;
   const data = await res.json();
-  if (data.results && data.results.length > 0) {
-    return data.results[0].id;
-  }
-  return null;
+  return data?.results?.[0]?.id ?? null;
 };
