@@ -10,13 +10,42 @@ const getUrl = (endpoint: string, apiKey: string, params: Record<string, string>
   return url.toString();
 };
 
-export const validateKey = async (apiKey: string): Promise<boolean> => {
+export const validateKey = async (apiKey: string): Promise<{ ok: boolean; reason?: string }> => {
   try {
-    // /configuration is a lightweight endpoint that supports api_key param
-    const res = await fetch(getUrl('/configuration', apiKey));
-    return res.ok;
-  } catch (e) {
-    return false;
+    const trimmed = apiKey.trim();                 // avoid trailing spaces issues
+    if (!trimmed) {
+      return { ok: false, reason: 'empty-key' };
+    }
+
+    const res = await fetch(getUrl('/configuration', trimmed));
+
+    if (res.ok) {
+      return { ok: true };
+    }
+
+    let body: any = {};
+    try {
+      body = await res.json();
+    } catch {
+      // ignore JSON parse error
+    }
+
+    const statusMsg =
+      body?.status_message ||
+      body?.statusCode ||
+      `HTTP ${res.status}`;
+
+    console.error('TMDB validateKey failed:', {
+      status: res.status,
+      statusText: res.statusText,
+      statusMsg,
+      body,
+    });
+
+    return { ok: false, reason: statusMsg };
+  } catch (e: any) {
+    console.error('TMDB validateKey network error:', e);
+    return { ok: false, reason: e?.message || 'network-error' };
   }
 };
 
