@@ -1,49 +1,45 @@
 import React from 'react';
-import { Star, Tv, Film, Calendar, Hash } from 'lucide-react';
+import { Star, Tv, Film, Calendar } from 'lucide-react';
 import { MediaItem } from '../types';
 
 interface MediaCardProps {
   item: MediaItem;
   onClick: (item: MediaItem) => void;
-  rank?: number; // optional ranking number (1,2,3,...)
+  // optional ranking number (1, 2, 3...) – only passed on ranked searches
+  rank?: number | null;
+  showRank?: boolean;
 }
 
-const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank }) => {
+const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank, showRank = false }) => {
   const imageUrl = item.poster_path
     ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
     : item.still_path
-    ? `https://image.tmdb.org/t/p/w500${item.still_path}` // Fallback for episodes
-    : 'https://picsum.photos/300/450'; // Fallback placeholder
+      ? `https://image.tmdb.org/t/p/w500${item.still_path}` // Fallback for episodes
+      : 'https://picsum.photos/300/450'; // Fallback placeholder
 
   const title = item.title || item.name;
-  const date = item.release_date || item.first_air_date || (item as any).air_date;
+  const date = item.release_date || item.first_air_date || item.air_date; // Handle episodes too
   const year = date ? new Date(date).getFullYear() : 'N/A';
-  const isEpisode = !!(item as any).episode_number;
+  const isEpisode = !!item.episode_number;
 
-  const rating =
-    typeof item.vote_average === 'number'
-      ? item.vote_average.toFixed(1)
-      : 'NR';
+  const rating = item.vote_average ? item.vote_average.toFixed(1) : null;
 
   return (
     <div
       onClick={() => onClick(item)}
-      className="group relative bg-[#0a0f1e] rounded-2xl overflow-hidden cursor-pointer transition-all duration-500 transform hover:-translate-y-2 hover:z-10"
+      className="group relative bg-[#0a0f1e] rounded-2xl cursor-pointer transition-all duration-500 transform hover:-translate-y-2 hover:z-10"
     >
-      {/* Hover border / glow */}
-      <div className="absolute inset-0 rounded-2xl border border-white/5 group-hover:border-cyan-500/50 group-hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all duration-500 pointer-events-none z-20" />
-
-      {/* Ranking badge (only if rank prop is passed) */}
-      {typeof rank === 'number' && (
-        <div className="absolute -top-2 -left-2 z-30 bg-cyan-600 text-white text-xs font-extrabold px-2 py-1 rounded-xl shadow-[0_0_12px_rgba(6,182,212,0.6)] flex items-center gap-1">
-          <Hash size={12} />
-          {rank}
+      {/* Rank badge (for ranked search results) */}
+      {showRank && rank != null && (
+        <div className="absolute top-2 left-2 z-30 bg-cyan-400/95 text-slate-950 text-xs font-extrabold px-2.5 py-1 rounded-full shadow-[0_0_16px_rgba(34,211,238,0.65)] flex items-center gap-1">
+          <span className="text-[10px] opacity-80">#</span>
+          <span className="text-sm leading-none">{rank}</span>
         </div>
       )}
 
-      {/* Image */}
+      {/* Image Container (handles clipping) */}
       <div
-        className={`relative overflow-hidden ${
+        className={`relative overflow-hidden rounded-2xl ${
           isEpisode ? 'aspect-video' : 'aspect-[2/3]'
         }`}
       >
@@ -54,33 +50,26 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank }) => {
           loading="lazy"
         />
 
-        {/* Gradient overlay */}
+        {/* Gradient Overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent opacity-80 group-hover:opacity-60 transition-opacity duration-300" />
 
-        {/* Rating badge – always visible (no hover needed) */}
-        <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-md text-amber-300 text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 border border-amber-500/40 shadow-[0_0_12px_rgba(251,191,36,0.35)]">
-          <Star size={12} fill="currentColor" />
-          {rating}
-        </div>
-
-        {/* Type badge (movie / tv) */}
-        <div className="absolute top-3 left-3 bg-fuchsia-600/90 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 border border-fuchsia-400/30 shadow-[0_0_10px_rgba(236,72,153,0.3)]">
-          {item.media_type === 'tv' ? <Tv size={12} /> : <Film size={12} />}
-          <span className="uppercase tracking-wider">
-            {item.media_type || (isEpisode ? 'EPISODE' : 'TITLE')}
-          </span>
-        </div>
-
-        {/* Episode badge (Sx Ey) */}
-        {isEpisode && (
-          <div className="absolute bottom-3 left-3 bg-cyan-900/80 text-cyan-200 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-cyan-400/40 shadow-[0_0_8px_rgba(6,182,212,0.3)]">
-            S{(item as any).season_number} · E{(item as any).episode_number}
+        {/* Rating Badge – always visible */}
+        {rating && (
+          <div className="absolute bottom-2 left-2 bg-black/70 backdrop-blur-md text-cyan-300 text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.4)]">
+            <Star size={12} fill="currentColor" />
+            {rating}
           </div>
         )}
+
+        {/* Type Badge (Movie / TV) */}
+        <div className="absolute top-2 right-2 bg-fuchsia-600/95 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 border border-fuchsia-400/40 shadow-[0_0_12px_rgba(236,72,153,0.5)]">
+          {item.media_type === 'tv' ? <Tv size={12} /> : <Film size={12} />}
+          <span className="uppercase tracking-wider">{item.media_type}</span>
+        </div>
       </div>
 
-      {/* Text info */}
-      <div className="p-4 relative z-10 bg-gradient-to-b from-transparent to-[#050b1a]">
+      {/* Content Info */}
+      <div className="p-4 relative z-10 bg-gradient-to-b from-transparent to-[#050b1a] rounded-b-2xl">
         <h3 className="text-slate-100 font-bold text-sm truncate group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-cyan-400 group-hover:to-fuchsia-400 transition-all">
           {title}
         </h3>
@@ -92,10 +81,9 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank }) => {
             />
             {year}
           </span>
-          {/* Duplicate episode badge down here as well (for consistency) */}
           {isEpisode && (
             <span className="text-cyan-400 bg-cyan-950/30 px-2 py-0.5 rounded border border-cyan-500/30 shadow-[0_0_8px_rgba(6,182,212,0.15)]">
-              S{(item as any).season_number} · E{(item as any).episode_number}
+              S{item.season_number} E{item.episode_number}
             </span>
           )}
         </div>
