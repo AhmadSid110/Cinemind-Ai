@@ -34,12 +34,12 @@ import {
 } from './firebase';
 
 const App: React.FC = () => {
-  /* -------------------- APP STATE -------------------- */
+  // --------- MAIN APP STATE ----------
   const [state, setState] = useState<AppState>({
     view: 'trending',
     searchQuery: '',
     tmdbKey: localStorage.getItem('tmdb_key') || '',
-    geminiKey: localStorage.getItem('gemini_key') || '',
+    geminiKey: localStorage.getItem('gemini_key') || (import.meta as any).env.VITE_GEMINI_KEY || '',
     searchResults: [],
     selectedItem: null,
     selectedPerson: null,
@@ -50,17 +50,16 @@ const App: React.FC = () => {
     aiExplanation: null,
   });
 
+  // settings modal auto-opens if no TMDB key locally
   const [isSettingsOpen, setIsSettingsOpen] = useState(!state.tmdbKey);
   const [libraryTab, setLibraryTab] = useState<'favorites' | 'watchlist'>('favorites');
-  const [libraryFilter, setLibraryFilter] = useState<'all' | 'movie' | 'tv' | 'animation'>(
-    'all',
-  );
+  const [libraryFilter, setLibraryFilter] = useState<'all' | 'movie' | 'tv' | 'animation'>('all');
 
-  /* -------------------- FIREBASE USER STATE -------------------- */
+  // ---------- FIREBASE AUTH STATE ----------
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
 
-  /* -------------------- LOCAL PERSISTENCE -------------------- */
+  // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
     localStorage.setItem('favorites', JSON.stringify(state.favorites));
     localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
@@ -75,7 +74,7 @@ const App: React.FC = () => {
     }
   }, [state.tmdbKey, state.geminiKey]);
 
-  /* -------------------- LOAD TRENDING WHEN TMDB KEY CHANGES -------------------- */
+  // ---------- LOAD TRENDING WHEN TMDB KEY AVAILABLE ----------
   useEffect(() => {
     if (state.tmdbKey) {
       loadTrending();
@@ -83,7 +82,7 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.tmdbKey]);
 
-  /* -------------------- FIREBASE AUTH SUBSCRIPTION -------------------- */
+  // ---------- FIREBASE AUTH SUBSCRIPTION ----------
   useEffect(() => {
     const unsub = subscribeToAuthChanges(async (user) => {
       setCurrentUser(user);
@@ -94,20 +93,27 @@ const App: React.FC = () => {
           const cloud = await loadUserData(user.uid);
 
           if (cloud) {
+            // Merge cloud → local, without overwriting non-empty local values
             setState((prev) => ({
               ...prev,
-              favorites: cloud.favorites || prev.favorites,
-              watchlist: cloud.watchlist || prev.watchlist,
+              favorites: cloud.favorites ?? prev.favorites,
+              watchlist: cloud.watchlist ?? prev.watchlist,
               tmdbKey: cloud.tmdbKey || prev.tmdbKey,
               geminiKey: cloud.geminiKey || prev.geminiKey,
             }));
 
             if (cloud.tmdbKey) localStorage.setItem('tmdb_key', cloud.tmdbKey);
             if (cloud.geminiKey) localStorage.setItem('gemini_key', cloud.geminiKey);
-            if (cloud.favorites)
-              localStorage.setItem('favorites', JSON.stringify(cloud.favorites));
-            if (cloud.watchlist)
-              localStorage.setItem('watchlist', JSON.stringify(cloud.watchlist));
+            if (cloud.favorites) localStorage.setItem('favorites', JSON.stringify(cloud.favorites));
+            if (cloud.watchlist) localStorage.setItem('watchlist', JSON.stringify(cloud.watchlist));
+          } else {
+            // First login on this account: create cloud doc from local state
+            await saveUserData(user.uid, {
+              favorites: state.favorites,
+              watchlist: state.watchlist,
+              tmdbKey: state.tmdbKey,
+              geminiKey: state.geminiKey,
+            });
           }
         } catch (err) {
           console.error('Error loading user cloud data:', err);
@@ -118,12 +124,14 @@ const App: React.FC = () => {
     });
 
     return () => unsub();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* -------------------- SYNC TO FIRESTORE WHEN STATE CHANGES -------------------- */
+  // ---------- SYNC STATE → FIRESTORE WHEN LOGGED IN ----------
   useEffect(() => {
     const sync = async () => {
       if (!currentUser) return;
+
       try {
         setIsSyncingCloud(true);
         await saveUserData(currentUser.uid, {
@@ -143,10 +151,11 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, state.favorites, state.watchlist, state.tmdbKey, state.geminiKey]);
 
-  /* -------------------- ACTIONS -------------------- */
+  // ---------- ACTIONS ----------
 
   const loadTrending = async () => {
     if (!state.tmdbKey) return;
+
     setState((prev) => ({
       ...prev,
       isLoading: true,
@@ -155,6 +164,7 @@ const App: React.FC = () => {
       selectedItem: null,
       selectedPerson: null,
     }));
+
     try {
       const results = await tmdb.getTrending(state.tmdbKey);
       setState((prev) => ({
@@ -164,6 +174,7 @@ const App: React.FC = () => {
         aiExplanation: "Here's what's popular today across movies and TV.",
       }));
     } catch (e) {
+      console.error(e);
       setState((prev) => ({
         ...prev,
         isLoading: false,
@@ -228,9 +239,10 @@ const App: React.FC = () => {
           season_number: ep.season_number,
           episode_number: ep.episode_number,
         }));
+
         explanation = `Top ${results.length} highest-rated episodes of ${analysis.query}.`;
       } else {
-        let personId = null;
+        let personId: number | null = null;
         if (analysis.with_people) {
           personId = await tmdb.getPersonId(state.tmdbKey, analysis.with_people);
         }
@@ -268,7 +280,8 @@ const App: React.FC = () => {
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: 'Sorry, I had trouble finding that. Try a simpler search or check your keys.',
+        error:
+          "Sorry, I had trouble finding that. Try a simpler search or check your keys.",
       }));
     }
   };
@@ -284,6 +297,7 @@ const App: React.FC = () => {
     }
 
     if (!state.tmdbKey) return;
+
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
       const details = await tmdb.getDetails(
@@ -298,6 +312,7 @@ const App: React.FC = () => {
         selectedPerson: null,
       }));
     } catch (e) {
+      console.error(e);
       setState((prev) => ({
         ...prev,
         isLoading: false,
@@ -312,6 +327,7 @@ const App: React.FC = () => {
       const person = await tmdb.getPersonDetails(state.tmdbKey, personId);
       setState((prev) => ({ ...prev, selectedPerson: person, isLoading: false }));
     } catch (e) {
+      console.error(e);
       setState((prev) => ({
         ...prev,
         isLoading: false,
@@ -324,16 +340,18 @@ const App: React.FC = () => {
     setState((prev) => {
       const list = prev[listType];
       const exists = list.find((i) => i.id === item.id);
+
       const newList = exists ? list.filter((i) => i.id !== item.id) : [...list, item];
+
       return { ...prev, [listType]: newList };
     });
   };
 
-  /* -------------------- AUTH HANDLERS -------------------- */
-
+  // ---------- AUTH HANDLERS ----------
   const handleLogin = async () => {
     try {
       await loginWithGoogle();
+      // subscribeToAuthChanges effect will handle loading cloud data
     } catch (err) {
       console.error('Login error:', err);
       alert('Google login failed. Check console for details.');
@@ -348,8 +366,7 @@ const App: React.FC = () => {
     }
   };
 
-  /* -------------------- HELPERS -------------------- */
-
+  // ---------- HELPERS ----------
   const renderGrid = (items: MediaItem[]) => (
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
       {items.map((item) => (
@@ -369,8 +386,7 @@ const App: React.FC = () => {
     return list.filter((i) => i.media_type === libraryFilter);
   };
 
-  /* -------------------- RENDER -------------------- */
-
+  // ---------- RENDER ----------
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 font-sans pb-24 selection:bg-cyan-500/30 selection:text-cyan-100">
       {/* HEADER */}
@@ -571,7 +587,7 @@ const App: React.FC = () => {
         ) : (
           <div className="animate-in fade-in duration-500">
             <h2 className="text-3xl font-bold text-white mb-8 capitalize flex items-center gap-3">
-              <span className="w-2 h-8 bg-cyan-500 rounded-full" />
+              <span className="w-2 h-8 bg-cyan-500 rounded-full"></span>
               {state.view === 'trending' ? 'Trending Now' : 'Search Results'}
             </h2>
             {state.searchResults.length > 0 ? (
