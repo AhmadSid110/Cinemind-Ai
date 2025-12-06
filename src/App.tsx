@@ -228,7 +228,8 @@ const App: React.FC = () => {
         ...prev,
         searchResults: results,
         isLoading: false,
-        aiExplanation: "Here's what's popular today across movies and TV.",
+        aiExplanation:
+          "Here's what's popular today across movies and TV.",
       }));
     } catch (e) {
       setState((prev) => ({
@@ -241,63 +242,9 @@ const App: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    const rawQuery = state.searchQuery.trim();
+    if (!state.searchQuery.trim() || !state.tmdbKey) return;
 
-    if (!rawQuery || !state.tmdbKey) return;
-
-    // ---- Detect "plain title" search (no AI needed) ----
-    const isPlainTitle = (() => {
-      const wordCount = rawQuery.split(/\s+/).length;
-      const hasTopPattern = /top\s+\d+/i.test(rawQuery);
-      const hasNLKeywords = /(top|best|good|recommend|recommendation|similar|like|movies?|series|shows?|episodes?|list|ranking|ranked)/i.test(
-        rawQuery
-      );
-      return !hasTopPattern && !hasNLKeywords && wordCount <= 5 && rawQuery.length <= 40;
-    })();
-
-    // common prep
-    setState((prev) => ({
-      ...prev,
-      isLoading: true,
-      error: null,
-      aiExplanation: null,
-    }));
-    setSuggestions([]); // hide autocomplete
-
-    // ---- 1) SIMPLE TITLE SEARCH PATH ----
-    if (isPlainTitle) {
-      try {
-        const multi = await tmdb.searchMulti(state.tmdbKey, rawQuery);
-        const primary = multi.filter(
-          (m) => m.media_type === 'movie' || m.media_type === 'tv'
-        );
-        const finalResults = primary.length > 0 ? primary : multi;
-
-        setState((prev) => ({
-          ...prev,
-          searchResults: finalResults,
-          isLoading: false,
-          view: 'search',
-          aiExplanation: `Results for "${rawQuery}".`,
-        }));
-      } catch (err) {
-        console.error(err);
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          error: 'Could not search that title. Please try again.',
-        }));
-      }
-      return;
-    }
-
-    // ---- 2) NATURAL-LANGUAGE / "TOP X" SEARCH (AI REQUIRED) ----
     if (!state.geminiKey && !state.openaiKey) {
-      // we already set isLoading = true above, so reset it
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-      }));
       alert(
         'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
       );
@@ -305,17 +252,28 @@ const App: React.FC = () => {
       return;
     }
 
+    setState((prev) => ({
+      ...prev,
+      isLoading: true,
+      error: null,
+      aiExplanation: null,
+    }));
+    setSuggestions([]); // hide autocomplete on submit
+
     try {
       // detect "top N" from raw query (for limits)
-      const topMatch = rawQuery.match(/top\s+(\d+)/i);
+      const topMatch = state.searchQuery.match(/top\s+(\d+)/i);
       const requestedLimit = topMatch ? parseInt(topMatch[1], 10) : undefined;
 
       // AI analysis (OpenAI first, then Gemini)
       let analysis: GeminiFilter;
       if (state.openaiKey) {
-        analysis = await analyzeQueryWithOpenAI(rawQuery, state.openaiKey);
+        analysis = await analyzeQueryWithOpenAI(
+          state.searchQuery,
+          state.openaiKey
+        );
       } else {
-        analysis = await analyzeQuery(rawQuery, state.geminiKey);
+        analysis = await analyzeQuery(state.searchQuery, state.geminiKey);
       }
 
       let results: MediaItem[] = [];
@@ -403,10 +361,9 @@ const App: React.FC = () => {
 
         // If user asked "top N" or sort_by is rating -> enforce min votes
         if (
-          /top\s+\d+/i.test(rawQuery) ||
+          /top\s+\d+/i.test(state.searchQuery) ||
           (analysis.sort_by && analysis.sort_by.startsWith('vote_average'))
         ) {
-          // this is TMDB discover filter: minimum vote count
           params['vote_count.gte'] = analysis.minVotes || 300;
         }
 
@@ -419,10 +376,10 @@ const App: React.FC = () => {
           );
           results = page1;
         } else {
-          // generic multi search
+          // generic multi search (for plain title search, this is the main path)
           const multi = await tmdb.searchMulti(
             state.tmdbKey,
-            analysis.query || rawQuery
+            analysis.query || state.searchQuery
           );
           results = multi;
         }
@@ -450,8 +407,8 @@ const App: React.FC = () => {
         view: 'search',
         aiExplanation: explanation,
       }));
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
       setState((prev) => ({
         ...prev,
         isLoading: false,
@@ -596,6 +553,14 @@ const App: React.FC = () => {
       return list.filter((i) => i.genre_ids?.includes(16));
     return list.filter((i) => i.media_type === libraryFilter);
   };
+
+  // Derived lists for home screen
+  const trendingMovies = state.searchResults.filter(
+    (i) => i.media_type === 'movie'
+  );
+  const trendingSeries = state.searchResults.filter(
+    (i) => i.media_type === 'tv'
+  );
 
   // ---------- RENDER ----------
   return (
@@ -866,26 +831,81 @@ const App: React.FC = () => {
             </div>
           </div>
         ) : (
-          <div className="animate-in fade-in duration-500">
-            <h2 className="text-3xl font-bold text-white mb-8 capitalize flex items-center gap-3">
-              <span className="w-2 h-8 bg-cyan-500 rounded-full" />
-              {state.view === 'trending' ? 'Trending Now' : 'Search Results'}
-            </h2>
-            {state.searchResults.length > 0 ? (
-              // ranking numbers ONLY when view === 'search'
-              renderGrid(state.searchResults, state.view === 'search')
+          <div className="animate-in fade-in duration-500 space-y-10">
+            {state.view === 'trending' ? (
+              <>
+                {/* Trending Movies */}
+                <section>
+                  <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+                    <span className="w-2 h-8 bg-cyan-500 rounded-full" />
+                    Trending Movies
+                  </h2>
+                  {trendingMovies.length > 0 ? (
+                    renderGrid(trendingMovies, false)
+                  ) : (
+                    !state.isLoading && (
+                      <p className="text-slate-500">
+                        No trending movies found. Check your TMDB key.
+                      </p>
+                    )
+                  )}
+                </section>
+
+                {/* Trending Series */}
+                <section>
+                  <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+                    <span className="w-2 h-8 bg-violet-500 rounded-full" />
+                    Trending Series
+                  </h2>
+                  {trendingSeries.length > 0 ? (
+                    renderGrid(trendingSeries, false)
+                  ) : (
+                    !state.isLoading && (
+                      <p className="text-slate-500">
+                        No trending series found. Try again later.
+                      </p>
+                    )
+                  )}
+                </section>
+
+                {/* Fallback if both empty */}
+                {!state.isLoading &&
+                  trendingMovies.length === 0 &&
+                  trendingSeries.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-24 text-slate-500">
+                      <Sparkles
+                        size={64}
+                        className="mb-6 text-slate-800"
+                      />
+                      <p className="text-xl font-light">
+                        Nothing trending could be loaded. Check your TMDB key in settings.
+                      </p>
+                    </div>
+                  )}
+              </>
             ) : (
-              !state.isLoading && (
-                <div className="flex flex-col items-center justify-center py-32 text-slate-500">
-                  <Sparkles
-                    size={64}
-                    className="mb-6 text-slate-800"
-                  />
-                  <p className="text-xl font-light">
-                    Start by typing what you feel like watching above.
-                  </p>
-                </div>
-              )
+              <>
+                <h2 className="text-3xl font-bold text-white mb-8 capitalize flex items-center gap-3">
+                  <span className="w-2 h-8 bg-cyan-500 rounded-full" />
+                  Search Results
+                </h2>
+                {state.searchResults.length > 0 ? (
+                  // ranking numbers ONLY when view === 'search'
+                  renderGrid(state.searchResults, true)
+                ) : (
+                  !state.isLoading && (
+                    <div className="flex flex-col items-center justify-center py-32 text-slate-500">
+                      <Sparkles
+                        size={64}
+                        className="mb-6 text-slate-800"
+                      />
+                      <p className="text-xl font-light">
+                        Start by typing what you feel like watching above.
+                      </p>
+                    </div>
+                  )
+                )}
+              </>
             )}
           </div>
         )}
