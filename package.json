@@ -16,11 +16,12 @@
     "android:release": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
+    "@google/genai": "^1.31.0",
+    "firebase": "^12.6.0",
+    "lucide-react": "^0.555.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
-    "recharts": "^3.5.1",
-    "@google/genai": "^1.31.0",
-    "lucide-react": "^0.555.0"
+    "recharts": "^3.5.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
