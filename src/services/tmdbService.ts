@@ -3,16 +3,27 @@ import { MediaItem, MediaDetail, Episode, Season, PersonDetail } from '../types'
 const BASE_URL = 'https://api.themoviedb.org/3';
 
 // Helper to construct URL with API Key
-const getUrl = (endpoint: string, apiKey: string, params: Record<string, string> = {}) => {
+const getUrl = (
+  endpoint: string,
+  apiKey: string,
+  params: Record<string, string> = {}
+) => {
   const url = new URL(`${BASE_URL}${endpoint}`);
   url.searchParams.append('api_key', apiKey);
-  Object.keys(params).forEach(key => url.searchParams.append(key, params[key]));
+  Object.keys(params).forEach((key) =>
+    url.searchParams.append(key, params[key])
+  );
   return url.toString();
 };
 
-export const validateKey = async (apiKey: string): Promise<{ ok: boolean; reason?: string }> => {
+/**
+ * Validate TMDB key, with detailed reason for failure.
+ */
+export const validateKey = async (
+  apiKey: string
+): Promise<{ ok: boolean; reason?: string }> => {
   try {
-    const trimmed = apiKey.trim();                 // avoid trailing spaces issues
+    const trimmed = apiKey.trim(); // avoid trailing spaces issues
     if (!trimmed) {
       return { ok: false, reason: 'empty-key' };
     }
@@ -31,9 +42,7 @@ export const validateKey = async (apiKey: string): Promise<{ ok: boolean; reason
     }
 
     const statusMsg =
-      body?.status_message ||
-      body?.statusCode ||
-      `HTTP ${res.status}`;
+      body?.status_message || body?.statusCode || `HTTP ${res.status}`;
 
     console.error('TMDB validateKey failed:', {
       status: res.status,
@@ -49,23 +58,73 @@ export const validateKey = async (apiKey: string): Promise<{ ok: boolean; reason
   }
 };
 
+/**
+ * Trending content (used for home screen).
+ */
 export const getTrending = async (apiKey: string): Promise<MediaItem[]> => {
-  const res = await fetch(getUrl('/trending/all/day', apiKey, { language: 'en-US' }));
+  const res = await fetch(
+    getUrl('/trending/all/day', apiKey, { language: 'en-US' })
+  );
   const data = await res.json();
   return data.results || [];
 };
 
-export const searchMulti = async (apiKey: string, query: string): Promise<MediaItem[]> => {
-  const res = await fetch(getUrl('/search/multi', apiKey, {
-    query,
-    include_adult: 'false',
-    language: 'en-US',
-    page: '1'
-  }));
+/**
+ * Generic multi-search (movies, TV, people, etc.).
+ */
+export const searchMulti = async (
+  apiKey: string,
+  query: string
+): Promise<MediaItem[]> => {
+  const res = await fetch(
+    getUrl('/search/multi', apiKey, {
+      query,
+      include_adult: 'false',
+      language: 'en-US',
+      page: '1',
+    })
+  );
   const data = await res.json();
   return data.results || [];
 };
 
+/**
+ * Autocomplete suggestions for the search box.
+ * - Uses /search/multi
+ * - Filters to movies + TV only
+ * - Returns only top `limit` items (for dropdown).
+ */
+export const getAutocompleteSuggestions = async (
+  apiKey: string,
+  query: string,
+  limit: number = 8
+): Promise<MediaItem[]> => {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  const res = await fetch(
+    getUrl('/search/multi', apiKey, {
+      query: trimmed,
+      include_adult: 'false',
+      language: 'en-US',
+      page: '1',
+    })
+  );
+
+  const data = await res.json();
+  const all: any[] = data.results || [];
+
+  // Only keep movies & TV shows for suggestions
+  const filtered = all.filter(
+    (item) => item.media_type === 'movie' || item.media_type === 'tv'
+  );
+
+  return filtered.slice(0, limit) as MediaItem[];
+};
+
+/**
+ * Discover API for AI-powered filtering (genres, year, etc.).
+ */
 export const discoverMedia = async (
   apiKey: string,
   type: 'movie' | 'tv',
@@ -78,65 +137,104 @@ export const discoverMedia = async (
     language: 'en-US',
     page: '1',
   };
-  
+
   Object.entries(params).forEach(([key, value]) => {
-      stringParams[key] = String(value);
+    stringParams[key] = String(value);
   });
 
   const res = await fetch(getUrl(`/discover/${type}`, apiKey, stringParams));
   const data = await res.json();
-  return (data.results || []).map((item: any) => ({ ...item, media_type: type }));
+  return (data.results || []).map((item: any) => ({
+    ...item,
+    media_type: type,
+  }));
 };
 
+/**
+ * Full details for a movie or TV show.
+ */
 export const getDetails = async (
   apiKey: string,
   type: 'movie' | 'tv',
   id: number
 ): Promise<MediaDetail> => {
-  const res = await fetch(getUrl(`/${type}/${id}`, apiKey, {
-    append_to_response: 'credits,videos,recommendations,external_ids'
-  }));
+  const res = await fetch(
+    getUrl(`/${type}/${id}`, apiKey, {
+      append_to_response: 'credits,videos,recommendations,external_ids',
+    })
+  );
   if (!res.ok) throw new Error('Failed to fetch details');
   const data = await res.json();
   return { ...data, media_type: type };
 };
 
-export const getPersonDetails = async (apiKey: string, id: number): Promise<PersonDetail> => {
-    const res = await fetch(getUrl(`/person/${id}`, apiKey, {
-        append_to_response: 'combined_credits'
-    }));
-    if (!res.ok) throw new Error('Failed to fetch person details');
-    const data = await res.json();
-    return data;
+/**
+ * Person details + combined credits (used for cast profile view).
+ */
+export const getPersonDetails = async (
+  apiKey: string,
+  id: number
+): Promise<PersonDetail> => {
+  const res = await fetch(
+    getUrl(`/person/${id}`, apiKey, {
+      append_to_response: 'combined_credits',
+    })
+  );
+  if (!res.ok) throw new Error('Failed to fetch person details');
+  const data = await res.json();
+  return data;
 };
 
-// Helper to find ID from name (for AI flow)
-export const findIdByName = async (apiKey: string, type: 'movie' | 'tv', name: string): Promise<number | null> => {
-    const res = await fetch(getUrl(`/search/${type}`, apiKey, { query: name }));
-    const data = await res.json();
-    if (data.results && data.results.length > 0) {
-        return data.results[0].id;
-    }
-    return null;
-}
+/**
+ * Helper to find first matching movie/TV show ID by name
+ * (used in AI "top episodes" flow).
+ */
+export const findIdByName = async (
+  apiKey: string,
+  type: 'movie' | 'tv',
+  name: string
+): Promise<number | null> => {
+  const res = await fetch(
+    getUrl(`/search/${type}`, apiKey, { query: name })
+  );
+  const data = await res.json();
+  if (data.results && data.results.length > 0) {
+    return data.results[0].id;
+  }
+  return null;
+};
 
-export const getShowSeasons = async (apiKey: string, showId: number): Promise<Season[]> => {
-    const details = await getDetails(apiKey, 'tv', showId);
-    return details.seasons || [];
-}
+export const getShowSeasons = async (
+  apiKey: string,
+  showId: number
+): Promise<Season[]> => {
+  const details = await getDetails(apiKey, 'tv', showId);
+  return details.seasons || [];
+};
 
-export const getSeasonEpisodes = async (apiKey: string, showId: number, seasonNumber: number): Promise<Episode[]> => {
-    const res = await fetch(getUrl(`/tv/${showId}/season/${seasonNumber}`, apiKey));
-    if(!res.ok) return [];
-    const data = await res.json();
-    return data.episodes || [];
-}
+export const getSeasonEpisodes = async (
+  apiKey: string,
+  showId: number,
+  seasonNumber: number
+): Promise<Episode[]> => {
+  const res = await fetch(
+    getUrl(`/tv/${showId}/season/${seasonNumber}`, apiKey)
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.episodes || [];
+};
 
-export const getPersonId = async (apiKey: string, name: string): Promise<number | null> => {
-     const res = await fetch(getUrl('/search/person', apiKey, { query: name }));
-    const data = await res.json();
-    if (data.results && data.results.length > 0) {
-        return data.results[0].id;
-    }
-    return null;
-}
+export const getPersonId = async (
+  apiKey: string,
+  name: string
+): Promise<number | null> => {
+  const res = await fetch(
+    getUrl('/search/person', apiKey, { query: name })
+  );
+  const data = await res.json();
+  if (data.results && data.results.length > 0) {
+    return data.results[0].id;
+  }
+  return null;
+};
