@@ -241,8 +241,52 @@ const App: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!state.searchQuery.trim() || !state.tmdbKey) return;
 
+    const rawQuery = state.searchQuery.trim();
+    if (!rawQuery || !state.tmdbKey) return;
+
+    // ---------- FAST PATH: PLAIN TITLE SEARCH ----------
+    // If query looks like a simple title (no "top 10", "best", "like", etc.)
+    // then skip AI completely and use TMDB search directly.
+    const isPlainTitleQuery =
+      !/top\s+\d+/i.test(rawQuery) &&
+      !/\b(best|worst|recommend|similar|like|episodes?|episode|season|rank|ranking|list|movies\s+for|shows\s+for|where|what|who)\b/i.test(
+        rawQuery
+      );
+
+    setSuggestions([]); // hide autocomplete on submit
+
+    if (isPlainTitleQuery) {
+      setState((prev) => ({
+        ...prev,
+        isLoading: true,
+        error: null,
+        aiExplanation: null,
+      }));
+
+      try {
+        const results = await tmdb.searchMulti(state.tmdbKey, rawQuery);
+
+        setState((prev) => ({
+          ...prev,
+          searchResults: results,
+          isLoading: false,
+          view: 'search',
+          aiExplanation: `Direct title search for "${rawQuery}".`,
+        }));
+      } catch (err) {
+        console.error('Plain title search error:', err);
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error:
+            'Sorry, I had trouble finding that title. Please check the spelling or try again.',
+        }));
+      }
+      return; // important: do NOT run AI path after this
+    }
+
+    // ---------- AI SEARCH PATH (for "top 10", complex prompts, etc.) ----------
     if (!state.geminiKey && !state.openaiKey) {
       alert(
         'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
@@ -257,22 +301,21 @@ const App: React.FC = () => {
       error: null,
       aiExplanation: null,
     }));
-    setSuggestions([]); // hide autocomplete on submit
 
     try {
       // detect "top N" from raw query (for limits)
-      const topMatch = state.searchQuery.match(/top\s+(\d+)/i);
+      const topMatch = rawQuery.match(/top\s+(\d+)/i);
       const requestedLimit = topMatch ? parseInt(topMatch[1], 10) : undefined;
 
       // AI analysis (OpenAI first, then Gemini)
       let analysis: GeminiFilter;
       if (state.openaiKey) {
         analysis = await analyzeQueryWithOpenAI(
-          state.searchQuery,
+          rawQuery,
           state.openaiKey
         );
       } else {
-        analysis = await analyzeQuery(state.searchQuery, state.geminiKey);
+        analysis = await analyzeQuery(rawQuery, state.geminiKey);
       }
 
       let results: MediaItem[] = [];
@@ -360,10 +403,10 @@ const App: React.FC = () => {
 
         // If user asked "top N" or sort_by is rating -> enforce min votes
         if (
-          /top\s+\d+/i.test(state.searchQuery) ||
+          /top\s+\d+/i.test(rawQuery) ||
           (analysis.sort_by && analysis.sort_by.startsWith('vote_average'))
         ) {
-          // this is TMDB discover filter: minimum vote count
+          // TMDB discover filter: minimum vote count
           params['vote_count.gte'] = analysis.minVotes || 300;
         }
 
@@ -379,7 +422,7 @@ const App: React.FC = () => {
           // generic multi search
           const multi = await tmdb.searchMulti(
             state.tmdbKey,
-            analysis.query || state.searchQuery
+            analysis.query || rawQuery
           );
           results = multi;
         }
@@ -394,7 +437,7 @@ const App: React.FC = () => {
           );
         }
 
-        // respect targetLimit (will usually be <=20 unless we add multi-page later)
+        // respect targetLimit
         if (results.length > targetLimit) {
           results = results.slice(0, targetLimit);
         }
@@ -956,3 +999,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+```0
