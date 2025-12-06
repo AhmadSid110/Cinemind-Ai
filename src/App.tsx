@@ -241,66 +241,69 @@ const App: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-
     const rawQuery = state.searchQuery.trim();
+
     if (!rawQuery || !state.tmdbKey) return;
 
-    // ---------- FAST PATH: PLAIN TITLE SEARCH ----------
-    // If query looks like a simple title (no "top 10", "best", "like", etc.)
-    // then skip AI completely and use TMDB search directly.
-    const isPlainTitleQuery =
-      !/top\s+\d+/i.test(rawQuery) &&
-      !/\b(best|worst|recommend|similar|like|episodes?|episode|season|rank|ranking|list|movies\s+for|shows\s+for|where|what|who)\b/i.test(
+    // ---- Detect "plain title" search (no AI needed) ----
+    const isPlainTitle = (() => {
+      const wordCount = rawQuery.split(/\s+/).length;
+      const hasTopPattern = /top\s+\d+/i.test(rawQuery);
+      const hasNLKeywords = /(top|best|good|recommend|recommendation|similar|like|movies?|series|shows?|episodes?|list|ranking|ranked)/i.test(
         rawQuery
       );
+      return !hasTopPattern && !hasNLKeywords && wordCount <= 5 && rawQuery.length <= 40;
+    })();
 
-    setSuggestions([]); // hide autocomplete on submit
-
-    if (isPlainTitleQuery) {
-      setState((prev) => ({
-        ...prev,
-        isLoading: true,
-        error: null,
-        aiExplanation: null,
-      }));
-
-      try {
-        const results = await tmdb.searchMulti(state.tmdbKey, rawQuery);
-
-        setState((prev) => ({
-          ...prev,
-          searchResults: results,
-          isLoading: false,
-          view: 'search',
-          aiExplanation: `Direct title search for "${rawQuery}".`,
-        }));
-      } catch (err) {
-        console.error('Plain title search error:', err);
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          error:
-            'Sorry, I had trouble finding that title. Please check the spelling or try again.',
-        }));
-      }
-      return; // important: do NOT run AI path after this
-    }
-
-    // ---------- AI SEARCH PATH (for "top 10", complex prompts, etc.) ----------
-    if (!state.geminiKey && !state.openaiKey) {
-      alert(
-        'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
-      );
-      setIsSettingsOpen(true);
-      return;
-    }
-
+    // common prep
     setState((prev) => ({
       ...prev,
       isLoading: true,
       error: null,
       aiExplanation: null,
     }));
+    setSuggestions([]); // hide autocomplete
+
+    // ---- 1) SIMPLE TITLE SEARCH PATH ----
+    if (isPlainTitle) {
+      try {
+        const multi = await tmdb.searchMulti(state.tmdbKey, rawQuery);
+        const primary = multi.filter(
+          (m) => m.media_type === 'movie' || m.media_type === 'tv'
+        );
+        const finalResults = primary.length > 0 ? primary : multi;
+
+        setState((prev) => ({
+          ...prev,
+          searchResults: finalResults,
+          isLoading: false,
+          view: 'search',
+          aiExplanation: `Results for "${rawQuery}".`,
+        }));
+      } catch (err) {
+        console.error(err);
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error: 'Could not search that title. Please try again.',
+        }));
+      }
+      return;
+    }
+
+    // ---- 2) NATURAL-LANGUAGE / "TOP X" SEARCH (AI REQUIRED) ----
+    if (!state.geminiKey && !state.openaiKey) {
+      // we already set isLoading = true above, so reset it
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+      }));
+      alert(
+        'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
+      );
+      setIsSettingsOpen(true);
+      return;
+    }
 
     try {
       // detect "top N" from raw query (for limits)
@@ -310,10 +313,7 @@ const App: React.FC = () => {
       // AI analysis (OpenAI first, then Gemini)
       let analysis: GeminiFilter;
       if (state.openaiKey) {
-        analysis = await analyzeQueryWithOpenAI(
-          rawQuery,
-          state.openaiKey
-        );
+        analysis = await analyzeQueryWithOpenAI(rawQuery, state.openaiKey);
       } else {
         analysis = await analyzeQuery(rawQuery, state.geminiKey);
       }
@@ -406,7 +406,7 @@ const App: React.FC = () => {
           /top\s+\d+/i.test(rawQuery) ||
           (analysis.sort_by && analysis.sort_by.startsWith('vote_average'))
         ) {
-          // TMDB discover filter: minimum vote count
+          // this is TMDB discover filter: minimum vote count
           params['vote_count.gte'] = analysis.minVotes || 300;
         }
 
@@ -450,8 +450,8 @@ const App: React.FC = () => {
         view: 'search',
         aiExplanation: explanation,
       }));
-    } catch (e) {
-      console.error(e);
+    } catch (err) {
+      console.error(err);
       setState((prev) => ({
         ...prev,
         isLoading: false,
@@ -999,4 +999,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-```0
