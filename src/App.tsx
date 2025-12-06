@@ -62,12 +62,12 @@ const App: React.FC = () => {
   // ---------- FIREBASE USER / SYNC STATE ----------
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
-  const [hasLoadedCloud, setHasLoadedCloud] = useState(false); // for cloud-first sync
+  const [hasLoadedCloud, setHasLoadedCloud] = useState(false); // ensures cloud-first
 
   // ---------- AUTOCOMPLETE STATE ----------
   const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
-  const [isSuggestLoading, setIsSuggestLoading] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isSuggestLoading, setIsSuggestLoading] = useState(false);
 
   // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
@@ -100,7 +100,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const unsub = subscribeToAuthChanges(async (user) => {
       setCurrentUser(user);
-      setHasLoadedCloud(false); // reset on auth change
+      setHasLoadedCloud(false); // reset on any auth change
 
       if (!user) return;
 
@@ -109,7 +109,7 @@ const App: React.FC = () => {
         const cloud = await loadUserData(user.uid);
 
         if (cloud) {
-          // CLOUD WINS initially
+          // CLOUD WINS: overwrite local state with server values
           const nextFavorites = cloud.favorites || [];
           const nextWatchlist = cloud.watchlist || [];
           const nextTmdbKey = cloud.tmdbKey || '';
@@ -127,21 +127,25 @@ const App: React.FC = () => {
             userRatings: nextUserRatings,
           }));
 
-          // mirror to localStorage
+          // keep localStorage exactly in sync with cloud
           localStorage.setItem('favorites', JSON.stringify(nextFavorites));
           localStorage.setItem('watchlist', JSON.stringify(nextWatchlist));
-          localStorage.setItem('userRatings', JSON.stringify(nextUserRatings));
+          localStorage.setItem(
+            'userRatings',
+            JSON.stringify(nextUserRatings)
+          );
           if (nextTmdbKey) localStorage.setItem('tmdb_key', nextTmdbKey);
           if (nextGeminiKey) localStorage.setItem('gemini_key', nextGeminiKey);
           if (nextOpenaiKey) localStorage.setItem('openai_key', nextOpenaiKey);
         } else {
-          console.log('[SYNC] No cloud doc; will push local as initial state.');
+          // No cloud doc yet – we'll push local as initial
+          console.log('[SYNC] No cloud doc yet, will push local as initial');
         }
       } catch (err) {
         console.error('Error loading user cloud data:', err);
       } finally {
         setIsSyncingCloud(false);
-        setHasLoadedCloud(true);
+        setHasLoadedCloud(true); // now allowed to sync upwards
       }
     });
 
@@ -152,7 +156,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const sync = async () => {
       if (!currentUser) return;
-      if (!hasLoadedCloud) return; // wait for initial load
+      if (!hasLoadedCloud) return; // don't push until initial cloud load done
 
       try {
         setIsSyncingCloud(true);
@@ -184,34 +188,51 @@ const App: React.FC = () => {
     state.userRatings,
   ]);
 
-  // ---------- AUTOCOMPLETE EFFECT (TMDB DIRECT) ----------
+  // ---------- AUTOCOMPLETE EFFECT ----------
   useEffect(() => {
-    if (!state.tmdbKey) return;
-    const query = state.searchQuery.trim();
-
-    if (query.length < 2) {
+    if (!state.tmdbKey) {
       setSuggestions([]);
+      setShowSuggestions(false);
       return;
     }
 
-    let active = true;
+    const q = state.searchQuery.trim();
+    if (!q || q.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    let cancelled = false;
     setIsSuggestLoading(true);
 
-    const timeoutId = setTimeout(async () => {
+    const handle = setTimeout(async () => {
       try {
-        const res = await tmdb.searchMulti(state.tmdbKey, query);
-        if (!active) return;
-        setSuggestions(res.slice(0, 8)); // top 8 suggestions
+        const sugg = await tmdb.getAutocompleteSuggestions(
+          state.tmdbKey,
+          q,
+          8
+        );
+        if (!cancelled) {
+          setSuggestions(sugg);
+          setShowSuggestions(sugg.length > 0);
+        }
       } catch (err) {
-        if (active) setSuggestions([]);
+        if (!cancelled) {
+          console.error('Autocomplete error:', err);
+          setSuggestions([]);
+          setShowSuggestions(false);
+        }
       } finally {
-        if (active) setIsSuggestLoading(false);
+        if (!cancelled) {
+          setIsSuggestLoading(false);
+        }
       }
-    }, 300); // 300ms debounce
+    }, 250); // small debounce
 
     return () => {
-      active = false;
-      clearTimeout(timeoutId);
+      cancelled = true;
+      clearTimeout(handle);
     };
   }, [state.searchQuery, state.tmdbKey]);
 
@@ -233,8 +254,7 @@ const App: React.FC = () => {
         ...prev,
         searchResults: results,
         isLoading: false,
-        aiExplanation:
-          "Here's what's popular today across movies and TV.",
+        aiExplanation: "Here's what's popular today across movies and TV.",
       }));
     } catch (e) {
       setState((prev) => ({
@@ -245,57 +265,74 @@ const App: React.FC = () => {
     }
   };
 
-  // Heuristic: detect simple title queries like "Rick and Morty"
-  const isSimpleTitleQuery = (q: string) => {
-    const trimmed = q.trim();
-    if (trimmed.length === 0) return false;
-    if (trimmed.length > 40) return false; // longer ones are usually natural language
-    const hasNumber = /\d/.test(trimmed);
-    if (hasNumber) return false;
-    const intentWords =
-      /\b(top|best|similar|like|recommend(ed)?|ranking|ranked|episodes?|season|movies?|shows?|list|watchlist)\b/i;
-    return !intentWords.test(trimmed);
+  const isPlainTitleQuery = (raw: string) => {
+    const q = raw.toLowerCase();
+    // If it looks like "top/best/similar/recommendation" -> AI
+    const aiWords =
+      /top|best|worst|list|rank|ranking|episode|episodes|season|similar|like|recommend|recommendation|suggest/;
+    return !aiWords.test(q);
   };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    const query = state.searchQuery.trim();
-    if (!query || !state.tmdbKey) return;
+    const raw = state.searchQuery.trim();
+    if (!raw || !state.tmdbKey) return;
 
-    setShowSuggestions(false);
-
-    // 1) If it's a simple title query, go straight to TMDB search (no AI needed)
-    if (isSimpleTitleQuery(query)) {
-      try {
-        setState((prev) => ({
-          ...prev,
-          isLoading: true,
-          error: null,
-          aiExplanation: null,
-        }));
-        const results = await tmdb.searchMulti(state.tmdbKey, query);
-        setState((prev) => ({
-          ...prev,
-          searchResults: results,
-          isLoading: false,
-          view: 'search',
-          aiExplanation: `Direct search results for "${query}".`,
-        }));
-      } catch (err) {
-        console.error(err);
-        setState((prev) => ({
-          ...prev,
-          isLoading: false,
-          error:
-            'There was a problem searching TMDB. Please check your key or try again.',
-        }));
-      }
+    // If no AI keys and it's a plain query -> direct TMDB search
+    if (isPlainTitleQuery(raw) && !state.geminiKey && !state.openaiKey) {
+      await runPlainSearch(raw);
       return;
     }
 
-    // 2) For natural-language / complex queries, require AI key
+    // If it's a plain title query, prefer direct TMDB search (better for “Rick and Morty” etc.)
+    if (isPlainTitleQuery(raw)) {
+      await runPlainSearch(raw);
+      return;
+    }
+
+    // Otherwise, use AI search (OpenAI first, then Gemini)
+    await runAISearch(raw);
+  };
+
+  const runPlainSearch = async (raw: string) => {
+    try {
+      setState((prev) => ({
+        ...prev,
+        isLoading: true,
+        error: null,
+        aiExplanation: null,
+      }));
+
+      const results = await tmdb.searchMulti(state.tmdbKey, raw);
+
+      setState((prev) => ({
+        ...prev,
+        searchResults: results,
+        isLoading: false,
+        view: 'search',
+        aiExplanation: results.length
+          ? `Direct search results for "${raw}".`
+          : `No results found for "${raw}".`,
+      }));
+    } catch (e) {
+      console.error(e);
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        error:
+          'Sorry, I had trouble searching. Try again or check your TMDB key.',
+      }));
+    } finally {
+      setShowSuggestions(false);
+    }
+  };
+
+  const runAISearch = async (raw: string) => {
+    // Check if we have at least one AI key
     if (!state.geminiKey && !state.openaiKey) {
-      alert('Please add your Gemini or OpenAI API Key in settings to use AI Search.');
+      alert(
+        'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
+      );
       setIsSettingsOpen(true);
       return;
     }
@@ -311,9 +348,9 @@ const App: React.FC = () => {
       // Try OpenAI first if available, fallback to Gemini
       let analysis: GeminiFilter;
       if (state.openaiKey) {
-        analysis = await analyzeQueryWithOpenAI(state.searchQuery, state.openaiKey);
+        analysis = await analyzeQueryWithOpenAI(raw, state.openaiKey);
       } else {
-        analysis = await analyzeQuery(state.searchQuery, state.geminiKey);
+        analysis = await analyzeQuery(raw, state.geminiKey);
       }
 
       let results: MediaItem[] = [];
@@ -353,21 +390,19 @@ const App: React.FC = () => {
           (a, b) => b.vote_average - a.vote_average
         );
 
-        results = sorted
-          .slice(0, analysis.limit || 10)
-          .map((ep) => ({
-            id: ep.id,
-            name: ep.name,
-            poster_path: null,
-            still_path: ep.still_path,
-            backdrop_path: ep.still_path,
-            overview: ep.overview,
-            vote_average: ep.vote_average,
-            air_date: ep.air_date,
-            media_type: 'tv',
-            season_number: ep.season_number,
-            episode_number: ep.episode_number,
-          }));
+        results = sorted.slice(0, analysis.limit || 10).map((ep) => ({
+          id: ep.id,
+          name: ep.name,
+          poster_path: null,
+          still_path: ep.still_path,
+          backdrop_path: ep.still_path,
+          overview: ep.overview,
+          vote_average: ep.vote_average,
+          air_date: ep.air_date,
+          media_type: 'tv',
+          season_number: ep.season_number,
+          episode_number: ep.episode_number,
+        }));
         explanation = `Top ${results.length} highest-rated episodes of ${analysis.query}.`;
       } else {
         let personId = null;
@@ -400,9 +435,10 @@ const App: React.FC = () => {
             params
           );
         } else {
+          // Fallback to TMDB search if AI didn't specify media_type
           results = await tmdb.searchMulti(
             state.tmdbKey,
-            analysis.query || state.searchQuery
+            analysis.query || raw
           );
         }
       }
@@ -422,6 +458,8 @@ const App: React.FC = () => {
         error:
           'Sorry, I had trouble finding that. Try a simpler search or check your keys.',
       }));
+    } finally {
+      setShowSuggestions(false);
     }
   };
 
@@ -525,13 +563,17 @@ const App: React.FC = () => {
     }
   };
 
-  // ---------- AUTOCOMPLETE CLICK ----------
-  const handleSuggestionClick = async (item: MediaItem) => {
+  // ---------- AUTOCOMPLETE HANDLER ----------
+  const handleSuggestionClick = (item: MediaItem) => {
+    const title =
+      (item as any).title || (item as any).name || state.searchQuery;
+    setState((prev) => ({
+      ...prev,
+      searchQuery: title,
+    }));
     setShowSuggestions(false);
-    // set search bar text to the clicked title
-    const title = (item as any).title || (item as any).name || '';
-    setState((prev) => ({ ...prev, searchQuery: title }));
-    await handleCardClick(item);
+    // For suggestion click, do direct TMDB search (best UX)
+    runPlainSearch(title);
   };
 
   // ---------- HELPERS ----------
@@ -575,81 +617,94 @@ const App: React.FC = () => {
             </span>
           </div>
 
-          {/* Search Bar + AUTOCOMPLETE */}
-          <form
-            onSubmit={handleSearch}
-            className="flex-1 max-w-2xl relative group"
-          >
-            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-              <Sparkles
-                className={`w-5 h-5 transition-colors ${
-                  state.isLoading
-                    ? 'animate-pulse text-cyan-400'
-                    : 'text-slate-500 group-focus-within:text-cyan-400'
-                }`}
+          {/* Search Bar + Autocomplete */}
+          <div className="relative flex-1 max-w-2xl">
+            <form
+              onSubmit={handleSearch}
+              className="relative group"
+              autoComplete="off"
+            >
+              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                <Sparkles
+                  className={`w-5 h-5 transition-colors ${
+                    state.isLoading
+                      ? 'animate-pulse text-cyan-400'
+                      : 'text-slate-500 group-focus-within:text-cyan-400'
+                  }`}
+                />
+              </div>
+              <input
+                type="text"
+                value={state.searchQuery}
+                onChange={(e) =>
+                  setState((prev) => ({
+                    ...prev,
+                    searchQuery: e.target.value,
+                  }))
+                }
+                onFocus={() => {
+                  if (suggestions.length > 0) setShowSuggestions(true);
+                }}
+                placeholder="Search a title or ask for smart lists (e.g. 'top 10 heist movies')"
+                className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
               />
-            </div>
-            <input
-              type="text"
-              value={state.searchQuery}
-              onChange={(e) =>
-                setState((prev) => ({
-                  ...prev,
-                  searchQuery: e.target.value,
-                }))
-              }
-              onFocus={() => {
-                if (suggestions.length > 0) setShowSuggestions(true);
-              }}
-              placeholder="Search titles or ask smartly (e.g., 'Dark sci-fi movies like Interstellar')"
-              className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
-            />
-            {state.isLoading && (
-              <div className="absolute inset-y-0 right-4 flex items-center">
-                <Loader2 className="animate-spin text-cyan-500" size={20} />
-              </div>
-            )}
+              {(state.isLoading || isSuggestLoading) && (
+                <div className="absolute inset-y-0 right-4 flex items-center">
+                  <Loader2 className="animate-spin text-cyan-500" size={20} />
+                </div>
+              )}
+            </form>
 
-            {/* AUTOCOMPLETE DROPDOWN */}
+            {/* Autocomplete dropdown */}
             {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute left-0 right-0 mt-2 bg-slate-950/95 border border-white/10 rounded-2xl shadow-xl max-h-80 overflow-y-auto z-50">
-                {isSuggestLoading && (
-                  <div className="px-3 py-2 text-xs text-slate-400 flex items-center gap-2">
-                    <Loader2 size={14} className="animate-spin" />
-                    <span>Loading suggestions…</span>
-                  </div>
-                )}
-                {suggestions.map((item) => (
-                  <button
-                    key={`${item.id}-${item.media_type}`}
-                    type="button"
-                    onClick={() => handleSuggestionClick(item)}
-                    className="w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-slate-800/80 transition text-sm"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium text-slate-100 truncate max-w-[220px]">
-                        {(item as any).title || (item as any).name}
-                      </span>
-                      <span className="text-[11px] uppercase tracking-wide text-slate-500">
-                        {item.media_type === 'movie'
-                          ? 'Movie'
-                          : item.media_type === 'tv'
-                          ? 'Series'
-                          : 'Person / Other'}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setShowSuggestions(false)}
-                  className="w-full text-center text-[11px] text-slate-500 py-1 border-t border-slate-800 hover:text-slate-300"
-                >
-                  Close suggestions
-                </button>
+              <div className="absolute mt-2 w-full bg-slate-900 border border-slate-700 rounded-2xl shadow-xl max-h-80 overflow-y-auto z-50">
+                {suggestions.map((item) => {
+                  const label =
+                    (item as any).title ||
+                    (item as any).name ||
+                    'Untitled';
+                  const sub =
+                    item.media_type === 'movie'
+                      ? 'Movie'
+                      : item.media_type === 'tv'
+                      ? 'Series'
+                      : item.media_type || '';
+                  return (
+                    <button
+                      key={`${item.id}-${item.media_type}`}
+                      type="button"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-800 text-left"
+                      onClick={() => handleSuggestionClick(item)}
+                    >
+                      {item.poster_path || item.backdrop_path ? (
+                        <div className="w-10 h-14 rounded-md bg-slate-800 overflow-hidden flex-shrink-0">
+                          <img
+                            src={`https://image.tmdb.org/t/p/w185${
+                              item.poster_path || item.backdrop_path
+                            }`}
+                            alt={label}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-10 h-14 rounded-md bg-slate-800 flex items-center justify-center flex-shrink-0">
+                          <Film size={18} className="text-slate-500" />
+                        </div>
+                      )}
+                      <div className="flex flex-col">
+                        <span className="text-sm font-semibold text-slate-100">
+                          {label}
+                        </span>
+                        <span className="text-[11px] uppercase tracking-wide text-slate-500">
+                          {sub}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             )}
-          </form>
+          </div>
 
           {/* Right actions */}
           <div className="flex items-center gap-3">
