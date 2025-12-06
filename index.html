@@ -58,6 +58,25 @@
       body {
         padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
       }
+      
+      /* Landscape mode optimizations */
+      @media screen and (orientation: landscape) and (max-height: 600px) {
+        /* Reduce header height in landscape */
+        .landscape-compact-header {
+          height: 60px !important;
+        }
+        
+        /* Adjust padding for landscape */
+        .landscape-compact-padding {
+          padding-top: 1rem !important;
+          padding-bottom: 1rem !important;
+        }
+        
+        /* Make grids more compact in landscape */
+        .landscape-compact-grid {
+          gap: 1rem !important;
+        }
+      }
     </style>
   <script type="importmap">
 {

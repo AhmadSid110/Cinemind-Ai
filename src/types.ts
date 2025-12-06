@@ -15,6 +15,8 @@ export interface MediaItem {
   season_number?: number;
   episode_number?: number;
   still_path?: string | null;
+  // User rating
+  userRating?: number;
 }
 
 export interface MediaDetail extends MediaItem {
@@ -74,6 +76,7 @@ export interface Episode {
   episode_number: number;
   season_number: number;
   still_path: string | null;
+  userRating?: number;
 }
 
 export interface CastMember {
@@ -115,6 +118,7 @@ export interface AppState {
   searchQuery: string;
   tmdbKey: string;
   geminiKey: string;
+  openaiKey: string;
   searchResults: MediaItem[];
   selectedItem: MediaDetail | null;
   selectedPerson: PersonDetail | null;
@@ -123,4 +127,5 @@ export interface AppState {
   favorites: MediaItem[];
   watchlist: MediaItem[];
   aiExplanation: string | null;
+  userRatings: { [key: string]: number }; // Map of media/episode IDs to user ratings
 }
