@@ -60,6 +60,7 @@ export const validateKey = async (
 
 /**
  * Trending content (used for home screen).
+ * (mixed movies + tv, TMDB returns `media_type` for each item)
  */
 export const getTrending = async (apiKey: string): Promise<MediaItem[]> => {
   const res = await fetch(
