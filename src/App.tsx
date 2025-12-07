@@ -59,6 +59,9 @@ const App: React.FC = () => {
     user, 
     state, 
     setState,
+    tmdbKey,
+    geminiKey,
+    openaiKey,
     updateKeysFromCloud,
   });
 
