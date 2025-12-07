@@ -31,6 +31,7 @@ import SettingsModal from './components/SettingsModal';
 import { useAuth } from './hooks/useAuth';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useApiKeys } from './hooks/useApiKeys';
+import { useLibrary } from './hooks/useLibrary';
 
 const App: React.FC = () => {
   // ---------- HOOKS ----------
@@ -58,6 +59,14 @@ const App: React.FC = () => {
     state, 
     setState,
     updateKeysFromCloud,
+  });
+
+  // Library management
+  const { toggleFavorite, toggleWatchlist, rateItem } = useLibrary({
+    favorites: state.favorites,
+    watchlist: state.watchlist,
+    userRatings: state.userRatings,
+    setState,
   });
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(!tmdbKey);
@@ -414,28 +423,6 @@ const App: React.FC = () => {
         error: 'Could not load person details.',
       }));
     }
-  };
-
-  const toggleList = (listType: 'favorites' | 'watchlist', item: MediaItem) => {
-    setState((prev) => {
-      const list = prev[listType];
-      const exists = list.find((i) => i.id === item.id);
-      const newList = exists
-        ? list.filter((i) => i.id !== item.id)
-        : [...list, item];
-      return { ...prev, [listType]: newList };
-    });
-  };
-
-  // ---------- RATING HANDLER ----------
-  const handleRating = (itemId: string, rating: number) => {
-    setState((prev) => ({
-      ...prev,
-      userRatings: {
-        ...prev.userRatings,
-        [itemId]: rating,
-      },
-    }));
   };
 
   // ---------- AUTH HANDLERS ----------
@@ -907,8 +894,8 @@ const App: React.FC = () => {
             setState((prev) => ({ ...prev, selectedItem: null }))
           }
           apiKey={tmdbKey}
-          onToggleFavorite={(i) => toggleList('favorites', i)}
-          onToggleWatchlist={(i) => toggleList('watchlist', i)}
+          onToggleFavorite={toggleFavorite}
+          onToggleWatchlist={toggleWatchlist}
           isFavorite={state.favorites.some(
             (f) => f.id === state.selectedItem?.id
           )}
@@ -917,7 +904,7 @@ const App: React.FC = () => {
           )}
           onCastClick={handleCastClick}
           userRatings={state.userRatings}
-          onRate={handleRating}
+          onRate={rateItem}
         />
       )}
 
