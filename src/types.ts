@@ -115,11 +115,6 @@ export interface GeminiFilter {
 
 export interface AppState {
   view: 'trending' | 'search' | 'detail' | 'library' | 'settings';
-  searchQuery: string;
-  tmdbKey: string;
-  geminiKey: string;
-  openaiKey: string;
-  searchResults: MediaItem[];
   selectedItem: MediaDetail | null;
   selectedPerson: PersonDetail | null;
   isLoading: boolean;

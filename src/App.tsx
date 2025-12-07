@@ -26,25 +26,24 @@ import MediaCard from './components/MediaCard';
 import DetailView from './components/DetailView';
 import PersonView from './components/PersonView';
 import SettingsModal from './components/SettingsModal';
+import HorizontalCarousel from './components/HorizontalCarousel';
 
-// Firebase helpers
-import {
-  auth,
-  loginWithGoogle,
-  subscribeToAuthChanges,
-  loadUserData,
-  saveUserData,
-} from './firebase';
+// Hooks
+import { useAuth } from './hooks/useAuth';
+import { useCloudSync } from './hooks/useCloudSync';
+import { useApiKeys } from './hooks/useApiKeys';
+import { useLibrary } from './hooks/useLibrary';
+import { useHomeFeed } from './hooks/useHomeFeed';
+import { useMediaSearch } from './hooks/useMediaSearch';
 
 const App: React.FC = () => {
+  // ---------- HOOKS ----------
+  const { user, login, logout } = useAuth();
+  const { tmdbKey, geminiKey, openaiKey, saveKeys, updateKeysFromCloud } = useApiKeys(user);
+
   // ---------- APP STATE ----------
   const [state, setState] = useState<AppState>({
     view: 'trending',
-    searchQuery: '',
-    tmdbKey: localStorage.getItem('tmdb_key') || '',
-    geminiKey: localStorage.getItem('gemini_key') || (process.env.API_KEY as string) || '',
-    openaiKey: localStorage.getItem('openai_key') || '',
-    searchResults: [],
     selectedItem: null,
     selectedPerson: null,
     isLoading: false,
@@ -55,26 +54,57 @@ const App: React.FC = () => {
     userRatings: JSON.parse(localStorage.getItem('userRatings') || '{}'),
   });
 
-  const [isSettingsOpen, setIsSettingsOpen] = useState(!state.tmdbKey);
+  // Cloud sync
+  const { syncing: isSyncingCloud } = useCloudSync({ 
+    user, 
+    state, 
+    setState,
+    updateKeysFromCloud,
+  });
+
+  // Library management
+  const { toggleFavorite, toggleWatchlist, rateItem } = useLibrary({
+    favorites: state.favorites,
+    watchlist: state.watchlist,
+    userRatings: state.userRatings,
+    setState,
+  });
+
+  const [isSettingsOpen, setIsSettingsOpen] = useState(!tmdbKey);
   const [libraryTab, setLibraryTab] =
     useState<'favorites' | 'watchlist'>('favorites');
   const [libraryFilter, setLibraryFilter] =
     useState<'all' | 'movie' | 'tv' | 'animation'>('all');
 
-  // ---------- FIREBASE USER / SYNC STATE ----------
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
-  const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
+  // ---------- HOME FEED ----------
+  const {
+    trendingMovies,
+    trendingTv,
+    inTheaters: nowPlayingMovies,
+    streamingNow: onAirTv,
+    loading: homeFeedLoading,
+    error: homeFeedError,
+  } = useHomeFeed(tmdbKey);
 
-  // ---------- AUTOCOMPLETE STATE ----------
-  const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
-  const [isSuggestLoading, setIsSuggestLoading] = useState(false);
-
-  // ---------- HOME SECTIONS STATE ----------
-  const [trendingMovies, setTrendingMovies] = useState<MediaItem[]>([]);
-  const [trendingTv, setTrendingTv] = useState<MediaItem[]>([]);
-  const [nowPlayingMovies, setNowPlayingMovies] = useState<MediaItem[]>([]);
-  const [onAirTv, setOnAirTv] = useState<MediaItem[]>([]);
+  // ---------- MEDIA SEARCH ----------
+  const {
+    searchQuery,
+    setSearchQuery,
+    results: searchResults,
+    explanation: searchExplanation,
+    suggestions,
+    isSearching,
+    isSuggestLoading,
+    error: searchError,
+    search,
+    selectSuggestion,
+  } = useMediaSearch({
+    tmdbKey,
+    geminiKey,
+    openaiKey,
+    trendingMovies,
+    trendingTv,
+  });
 
   // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
@@ -83,198 +113,21 @@ const App: React.FC = () => {
     localStorage.setItem('userRatings', JSON.stringify(state.userRatings));
   }, [state.favorites, state.watchlist, state.userRatings]);
 
-  useEffect(() => {
-    if (state.tmdbKey) {
-      localStorage.setItem('tmdb_key', state.tmdbKey);
-    }
-    if (state.geminiKey) {
-      localStorage.setItem('gemini_key', state.geminiKey);
-    }
-    if (state.openaiKey) {
-      localStorage.setItem('openai_key', state.openaiKey);
-    }
-  }, [state.tmdbKey, state.geminiKey, state.openaiKey]);
-
-  // ---------- LOAD HOME SECTIONS WHEN TMDB KEY AVAILABLE ----------
-  useEffect(() => {
-    if (state.tmdbKey) {
-      loadHomeSections();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.tmdbKey]);
-
-  // ---------- FIREBASE AUTH SUBSCRIPTION (CLOUD-FIRST LOAD) ----------
-  useEffect(() => {
-    const unsub = subscribeToAuthChanges(async (user) => {
-      setCurrentUser(user);
-      setHasLoadedCloud(false);
-
-      if (!user) return;
-
-      try {
-        setIsSyncingCloud(true);
-        const cloud = await loadUserData(user.uid);
-
-        if (cloud) {
-          const nextFavorites = cloud.favorites || [];
-          const nextWatchlist = cloud.watchlist || [];
-          const nextTmdbKey = cloud.tmdbKey || '';
-          const nextGeminiKey = cloud.geminiKey || '';
-          const nextOpenaiKey = cloud.openaiKey || '';
-          const nextUserRatings = cloud.userRatings || {};
-
-          setState((prev) => ({
-            ...prev,
-            favorites: nextFavorites,
-            watchlist: nextWatchlist,
-            tmdbKey: nextTmdbKey || prev.tmdbKey,
-            geminiKey: nextGeminiKey || prev.geminiKey,
-            openaiKey: nextOpenaiKey || prev.openaiKey,
-            userRatings: nextUserRatings,
-          }));
-
-          // sync localStorage to cloud
-          localStorage.setItem('favorites', JSON.stringify(nextFavorites));
-          localStorage.setItem('watchlist', JSON.stringify(nextWatchlist));
-          localStorage.setItem('userRatings', JSON.stringify(nextUserRatings));
-          if (nextTmdbKey) localStorage.setItem('tmdb_key', nextTmdbKey);
-          if (nextGeminiKey) localStorage.setItem('gemini_key', nextGeminiKey);
-          if (nextOpenaiKey) localStorage.setItem('openai_key', nextOpenaiKey);
-        } else {
-          console.log('[SYNC] No cloud doc yet, will push local as initial');
-        }
-      } catch (err) {
-        console.error('Error loading user cloud data:', err);
-      } finally {
-        setIsSyncingCloud(false);
-        setHasLoadedCloud(true);
-      }
-    });
-
-    return () => unsub();
-  }, []);
-
-  // ---------- CONTINUOUS SYNC TO FIRESTORE ----------
-  useEffect(() => {
-    const sync = async () => {
-      if (!currentUser) return;
-      if (!hasLoadedCloud) return;
-
-      try {
-        setIsSyncingCloud(true);
-        await saveUserData(currentUser.uid, {
-          favorites: state.favorites,
-          watchlist: state.watchlist,
-          tmdbKey: state.tmdbKey,
-          geminiKey: state.geminiKey,
-          openaiKey: state.openaiKey,
-          userRatings: state.userRatings,
-        });
-      } catch (err) {
-        console.error('Error syncing to Firestore:', err);
-      } finally {
-        setIsSyncingCloud(false);
-      }
-    };
-
-    sync();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    currentUser,
-    hasLoadedCloud,
-    state.favorites,
-    state.watchlist,
-    state.tmdbKey,
-    state.geminiKey,
-    state.openaiKey,
-    state.userRatings,
-  ]);
-
-  // ---------- AUTOCOMPLETE EFFECT ----------
-  useEffect(() => {
-    const q = state.searchQuery.trim();
-    if (!state.tmdbKey || !q) {
-      setSuggestions([]);
-      return;
-    }
-
-    const handle = setTimeout(async () => {
-      try {
-        setIsSuggestLoading(true);
-        const sug = await tmdb.getAutocompleteSuggestions(
-          state.tmdbKey,
-          q,
-          8
-        );
-        setSuggestions(sug);
-      } catch (e) {
-        console.error('Autocomplete error:', e);
-      } finally {
-        setIsSuggestLoading(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(handle);
-  }, [state.searchQuery, state.tmdbKey]);
-
   // ---------- ACTIONS ----------
 
-  const loadHomeSections = async () => {
-    if (!state.tmdbKey) return;
+  const goToHome = () => {
     setState((prev) => ({
       ...prev,
-      isLoading: true,
-      error: null,
       view: 'trending',
       selectedItem: null,
       selectedPerson: null,
+      aiExplanation: "Here's what's hot right now across movies, series, in theatres and streaming.",
     }));
-
-    try {
-      const [
-        moviesTrending,
-        tvTrending,
-        moviesNowPlaying,
-        tvOnAir,
-      ] = await Promise.all([
-        tmdb.getTrendingMovies(state.tmdbKey),
-        tmdb.getTrendingTv(state.tmdbKey),
-        tmdb.getNowPlayingMovies(state.tmdbKey),
-        tmdb.getOnTheAirTv(state.tmdbKey),
-      ]);
-
-      setTrendingMovies(moviesTrending);
-      setTrendingTv(tvTrending);
-      setNowPlayingMovies(moviesNowPlaying);
-      setOnAirTv(tvOnAir);
-
-      // also keep some list in searchResults so existing code doesn't break
-      const combinedForState = [
-        ...moviesTrending.slice(0, 10),
-        ...tvTrending.slice(0, 10),
-      ];
-
-      setState((prev) => ({
-        ...prev,
-        searchResults: combinedForState,
-        isLoading: false,
-        aiExplanation: "Here's what's hot right now across movies, series, in theatres and streaming.",
-      }));
-    } catch (e) {
-      console.error(e);
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error: 'Failed to load home content. Check your TMDB key or network.',
-      }));
-    }
   };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!state.searchQuery.trim() || !state.tmdbKey) return;
-
-    if (!state.geminiKey && !state.openaiKey) {
+    if (!geminiKey && !openaiKey) {
       alert(
         'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
       );
@@ -282,177 +135,17 @@ const App: React.FC = () => {
       return;
     }
 
+    setState((prev) => ({ ...prev, isLoading: true }));
+    await search();
+    
+    // Update state after search completes
     setState((prev) => ({
       ...prev,
-      isLoading: true,
-      error: null,
-      aiExplanation: null,
+      view: 'search',
+      isLoading: false,
+      aiExplanation: searchExplanation,
+      error: searchError,
     }));
-    setSuggestions([]); // hide autocomplete on submit
-
-    try {
-      // detect "top N" from raw query (for limits)
-      const topMatch = state.searchQuery.match(/top\s+(\d+)/i);
-      const requestedLimit = topMatch ? parseInt(topMatch[1], 10) : undefined;
-
-      // AI analysis (OpenAI first, then Gemini)
-      let analysis: GeminiFilter;
-      if (state.openaiKey) {
-        analysis = await analyzeQueryWithOpenAI(
-          state.searchQuery,
-          state.openaiKey
-        );
-      } else {
-        analysis = await analyzeQuery(state.searchQuery, state.geminiKey);
-      }
-
-      let results: MediaItem[] = [];
-      let explanation =
-        analysis.explanation || 'Results based on your search.';
-
-      let targetLimit = analysis.limit || requestedLimit || 20;
-      if (!targetLimit || Number.isNaN(targetLimit) || targetLimit <= 0) {
-        targetLimit = 20;
-      }
-      targetLimit = Math.min(targetLimit, 100); // safety cap
-
-      if (analysis.searchType === 'trending') {
-        // reuse our trending movies + tv if already loaded
-        if (trendingMovies.length || trendingTv.length) {
-          results = [...trendingMovies, ...trendingTv].slice(0, targetLimit);
-        } else {
-          const combined = await tmdb.getTrending(state.tmdbKey);
-          results = combined.slice(0, targetLimit);
-        }
-      } else if (analysis.searchType === 'episode_ranking' && analysis.query) {
-        explanation = `Finding top ranked episodes for "${analysis.query}"...`;
-        setState((prev) => ({ ...prev, aiExplanation: explanation }));
-
-        const showId = await tmdb.findIdByName(
-          state.tmdbKey,
-          'tv',
-          analysis.query
-        );
-        if (!showId) throw new Error('Could not find that TV show.');
-
-        const seasons = await tmdb.getShowSeasons(state.tmdbKey, showId);
-
-        const fetchPromises = seasons
-          .filter((s) => s.season_number > 0)
-          .slice(0, 15)
-          .map((s) =>
-            tmdb.getSeasonEpisodes(
-              state.tmdbKey,
-              showId,
-              s.season_number
-            )
-          );
-
-        const seasonsEpisodes = await Promise.all(fetchPromises);
-        const allEpisodes: Episode[] = seasonsEpisodes.flat();
-
-        const sorted = allEpisodes.sort(
-          (a, b) => b.vote_average - a.vote_average
-        );
-
-        results = sorted.slice(0, targetLimit).map((ep) => ({
-          id: ep.id,
-          name: ep.name,
-          poster_path: null,
-          still_path: ep.still_path,
-          backdrop_path: ep.still_path,
-          overview: ep.overview,
-          vote_average: ep.vote_average,
-          air_date: ep.air_date,
-          media_type: 'tv',
-          season_number: ep.season_number,
-          episode_number: ep.episode_number,
-        })) as any;
-
-        explanation = `Top ${results.length} highest-rated episodes of ${analysis.query}.`;
-      } else {
-        // General / "top X ..." movies & shows OR plain title search
-        let personId = null;
-        if (analysis.with_people) {
-          personId = await tmdb.getPersonId(
-            state.tmdbKey,
-            analysis.with_people
-          );
-        }
-
-        const params: any = {
-          sort_by: analysis.sort_by || 'popularity.desc',
-          ...(analysis.genres && {
-            with_genres: analysis.genres.join(','),
-          }),
-          ...(analysis.year && {
-            primary_release_year: analysis.year,
-            first_air_date_year: analysis.year,
-          }),
-          ...(personId && { with_people: personId }),
-          ...(analysis.language && {
-            with_original_language: analysis.language,
-          }),
-        };
-
-        // If user asked "top N" or sort_by is rating -> enforce min votes
-        if (
-          /top\s+\d+/i.test(state.searchQuery) ||
-          (analysis.sort_by && analysis.sort_by.startsWith('vote_average'))
-        ) {
-          // this is TMDB discover filter: minimum vote count
-          params['vote_count.gte'] = analysis.minVotes || 300;
-        }
-
-        if (analysis.media_type) {
-          // discover for a specific type
-          const page1 = await tmdb.discoverMedia(
-            state.tmdbKey,
-            analysis.media_type,
-            params
-          );
-          results = page1;
-        } else {
-          // Plain title / generic search – trust the user's text more
-          const queryText = (analysis.query || state.searchQuery).trim();
-          const multi = await tmdb.searchMulti(
-            state.tmdbKey,
-            queryText
-          );
-          results = multi;
-        }
-
-        // sort by rating locally if requested
-        if (
-          analysis.sort_by &&
-          analysis.sort_by.startsWith('vote_average')
-        ) {
-          results = [...results].sort(
-            (a, b) => (b.vote_average || 0) - (a.vote_average || 0)
-          );
-        }
-
-        if (results.length > targetLimit) {
-          results = results.slice(0, targetLimit);
-        }
-      }
-
-      setState((prev) => ({
-        ...prev,
-        searchResults: results,
-        isLoading: false,
-        view: 'search',
-        aiExplanation: explanation,
-      }));
-    } catch (e) {
-      console.error(e);
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error:
-          'Sorry, I had trouble finding that. Try a simpler search or check your keys.',
-      }));
-    }
   };
 
   const handleCardClick = async (item: MediaItem) => {
@@ -467,11 +160,11 @@ const App: React.FC = () => {
       return;
     }
 
-    if (!state.tmdbKey) return;
+    if (!tmdbKey) return;
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
       const details = await tmdb.getDetails(
-        state.tmdbKey,
+        tmdbKey,
         item.media_type as 'movie' | 'tv',
         item.id
       );
@@ -498,7 +191,7 @@ const App: React.FC = () => {
     }));
     try {
       const person = await tmdb.getPersonDetails(
-        state.tmdbKey,
+        tmdbKey,
         personId
       );
       setState((prev) => ({
@@ -515,32 +208,10 @@ const App: React.FC = () => {
     }
   };
 
-  const toggleList = (listType: 'favorites' | 'watchlist', item: MediaItem) => {
-    setState((prev) => {
-      const list = prev[listType];
-      const exists = list.find((i) => i.id === item.id);
-      const newList = exists
-        ? list.filter((i) => i.id !== item.id)
-        : [...list, item];
-      return { ...prev, [listType]: newList };
-    });
-  };
-
-  // ---------- RATING HANDLER ----------
-  const handleRating = (itemId: string, rating: number) => {
-    setState((prev) => ({
-      ...prev,
-      userRatings: {
-        ...prev.userRatings,
-        [itemId]: rating,
-      },
-    }));
-  };
-
   // ---------- AUTH HANDLERS ----------
   const handleLogin = async () => {
     try {
-      await loginWithGoogle();
+      await login();
     } catch (err) {
       console.error('Login error:', err);
       alert('Google login failed. Check console for details.');
@@ -549,7 +220,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      await auth.signOut();
+      await logout();
     } catch (err) {
       console.error('Logout error:', err);
     }
@@ -557,15 +228,12 @@ const App: React.FC = () => {
 
   // ---------- AUTOCOMPLETE CLICK ----------
   const handleSuggestionClick = (item: MediaItem) => {
-    const title = item.title || item.name || '';
+    selectSuggestion(item);
     setState((prev) => ({
       ...prev,
-      searchQuery: title,
-      searchResults: [item],
       view: 'search',
       aiExplanation: null,
     }));
-    setSuggestions([]);
   };
 
   // ---------- HELPERS ----------
@@ -600,7 +268,7 @@ const App: React.FC = () => {
           {/* Logo / Home */}
           <div
             className="flex items-center gap-3 cursor-pointer group"
-            onClick={loadHomeSections}
+            onClick={goToHome}
           >
             <div className="bg-gradient-to-br from-cyan-500 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40 transition-all duration-300">
               <Video className="text-white fill-white" size={20} />
@@ -618,7 +286,7 @@ const App: React.FC = () => {
             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
               <Sparkles
                 className={`w-5 h-5 transition-colors ${
-                  state.isLoading
+                  isSearching
                     ? 'animate-pulse text-cyan-400'
                     : 'text-slate-500 group-focus-within:text-cyan-400'
                 }`}
@@ -626,24 +294,19 @@ const App: React.FC = () => {
             </div>
             <input
               type="text"
-              value={state.searchQuery}
-              onChange={(e) =>
-                setState((prev) => ({
-                  ...prev,
-                  searchQuery: e.target.value,
-                }))
-              }
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search titles or ask things like 'Top 20 sci-fi movies like Interstellar'"
               className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
             />
-            {state.isLoading && (
+            {isSearching && (
               <div className="absolute inset-y-0 right-4 flex items-center">
                 <Loader2 className="animate-spin text-cyan-500" size={20} />
               </div>
             )}
 
             {/* Autocomplete dropdown */}
-            {suggestions.length > 0 && state.searchQuery.trim() && (
+            {suggestions.length > 0 && searchQuery.trim() && (
               <div className="absolute mt-2 left-0 right-0 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 max-h-80 overflow-y-auto">
                 {suggestions.map((sug, idx) => {
                   const title = sug.title || sug.name;
@@ -693,29 +356,29 @@ const App: React.FC = () => {
 
           {/* Right actions */}
           <div className="flex items-center gap-3">
-            {isSyncingCloud && currentUser && (
+            {isSyncingCloud && user && (
               <div className="flex items-center gap-1 text-xs text-cyan-300">
                 <Loader2 size={14} className="animate-spin" />
                 <span>Syncing</span>
               </div>
             )}
 
-            {currentUser ? (
+            {user ? (
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-3 py-2 text-xs md:text-sm rounded-xl bg-slate-900/60 border border-white/10 hover:border-red-400/60 hover:bg-red-500/10 transition"
               >
-                {currentUser.photoURL ? (
+                {user.photoURL ? (
                   <img
-                    src={currentUser.photoURL}
-                    alt={currentUser.displayName || 'User'}
+                    src={user.photoURL}
+                    alt={user.displayName || 'User'}
                     className="w-6 h-6 rounded-full"
                   />
                 ) : (
                   <UserCircle size={18} />
                 )}
                 <span className="hidden md:inline max-w-[120px] truncate">
-                  {currentUser.displayName || currentUser.email}
+                  {user.displayName || user.email}
                 </span>
                 <LogOut size={16} className="hidden md:inline" />
               </button>
@@ -744,7 +407,7 @@ const App: React.FC = () => {
       {/* MAIN CONTENT */}
       <main className="max-w-7xl mx-auto px-4 py-10">
         {/* AI Explanation Banner */}
-        {state.aiExplanation && !state.isLoading && (
+        {state.aiExplanation && !isSearching && (
           <div className="mb-10 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 border border-cyan-500/20 p-5 rounded-2xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="p-2 bg-cyan-500/10 rounded-lg">
               <Sparkles
@@ -861,75 +524,39 @@ const App: React.FC = () => {
             </div>
           </div>
         ) : state.view === 'trending' ? (
-          // -------- HOME / TRENDING VIEW WITH MULTIPLE SECTIONS --------
+          // -------- HOME / TRENDING VIEW WITH HORIZONTAL CAROUSELS --------
           <div className="space-y-10 animate-in fade-in duration-500">
-            {/* Trending Movies */}
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                  <span className="w-2 h-8 bg-cyan-500 rounded-full" />
-                  Trending Movies
-                </h2>
-              </div>
-              {trendingMovies.length > 0 ? (
-                renderGrid(trendingMovies.slice(0, 20), false)
-              ) : (
-                <p className="text-slate-500 text-sm">
-                  No trending movies available right now.
-                </p>
-              )}
-            </section>
+            <HorizontalCarousel
+              title="Trending Movies"
+              items={trendingMovies}
+              onItemClick={handleCardClick}
+              accentColor="cyan"
+              emptyMessage="No trending movies available right now."
+            />
 
-            {/* Trending Series */}
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                  <span className="w-2 h-8 bg-fuchsia-500 rounded-full" />
-                  Trending Series
-                </h2>
-              </div>
-              {trendingTv.length > 0 ? (
-                renderGrid(trendingTv.slice(0, 20), false)
-              ) : (
-                <p className="text-slate-500 text-sm">
-                  No trending series available right now.
-                </p>
-              )}
-            </section>
+            <HorizontalCarousel
+              title="Trending Series"
+              items={trendingTv}
+              onItemClick={handleCardClick}
+              accentColor="fuchsia"
+              emptyMessage="No trending series available right now."
+            />
 
-            {/* In Theatres */}
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                  <span className="w-2 h-8 bg-emerald-500 rounded-full" />
-                  In Theatres Now
-                </h2>
-              </div>
-              {nowPlayingMovies.length > 0 ? (
-                renderGrid(nowPlayingMovies.slice(0, 20), false)
-              ) : (
-                <p className="text-slate-500 text-sm">
-                  No &quot;Now Playing&quot; movies available for your region.
-                </p>
-              )}
-            </section>
+            <HorizontalCarousel
+              title="In Theatres Now"
+              items={nowPlayingMovies}
+              onItemClick={handleCardClick}
+              accentColor="emerald"
+              emptyMessage="No &quot;Now Playing&quot; movies available for your region."
+            />
 
-            {/* Streaming Now on TV */}
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                  <span className="w-2 h-8 bg-indigo-500 rounded-full" />
-                  Streaming Now on TV
-                </h2>
-              </div>
-              {onAirTv.length > 0 ? (
-                renderGrid(onAirTv.slice(0, 20), false)
-              ) : (
-                <p className="text-slate-500 text-sm">
-                  No &quot;On The Air&quot; TV data available right now.
-                </p>
-              )}
-            </section>
+            <HorizontalCarousel
+              title="Streaming Now on TV"
+              items={onAirTv}
+              onItemClick={handleCardClick}
+              accentColor="indigo"
+              emptyMessage="No &quot;On The Air&quot; TV data available right now."
+            />
           </div>
         ) : (
           // -------- SEARCH RESULTS VIEW --------
@@ -938,11 +565,11 @@ const App: React.FC = () => {
               <span className="w-2 h-8 bg-cyan-500 rounded-full" />
               Search Results
             </h2>
-            {state.searchResults.length > 0 ? (
+            {searchResults.length > 0 ? (
               // ranking numbers ONLY when view === 'search'
-              renderGrid(state.searchResults, true)
+              renderGrid(searchResults, true)
             ) : (
-              !state.isLoading && (
+              !isSearching && (
                 <div className="flex flex-col items-center justify-center py-32 text-slate-500">
                   <Sparkles
                     size={64}
@@ -962,7 +589,7 @@ const App: React.FC = () => {
       <nav className="fixed bottom-0 left-0 right-0 bg-[#020617]/90 backdrop-blur-xl border-t border-white/5 z-40 pb-safe">
         <div className="flex justify-around p-4">
           <button
-            onClick={loadHomeSections}
+            onClick={goToHome}
             className={`flex flex-col items-center gap-1.5 transition-colors ${
               state.view === 'trending'
                 ? 'text-cyan-400'
@@ -1005,9 +632,9 @@ const App: React.FC = () => {
           onClose={() =>
             setState((prev) => ({ ...prev, selectedItem: null }))
           }
-          apiKey={state.tmdbKey}
-          onToggleFavorite={(i) => toggleList('favorites', i)}
-          onToggleWatchlist={(i) => toggleList('watchlist', i)}
+          apiKey={tmdbKey}
+          onToggleFavorite={toggleFavorite}
+          onToggleWatchlist={toggleWatchlist}
           isFavorite={state.favorites.some(
             (f) => f.id === state.selectedItem?.id
           )}
@@ -1016,7 +643,7 @@ const App: React.FC = () => {
           )}
           onCastClick={handleCastClick}
           userRatings={state.userRatings}
-          onRate={handleRating}
+          onRate={rateItem}
         />
       )}
 
@@ -1033,32 +660,11 @@ const App: React.FC = () => {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        currentKey={state.tmdbKey}
-        currentGeminiKey={state.geminiKey}
-        currentOpenAIKey={state.openaiKey}
+        currentKey={tmdbKey}
+        currentGeminiKey={geminiKey}
+        currentOpenAIKey={openaiKey}
         onSave={async (key, geminiKey, openaiKey) => {
-          localStorage.setItem('tmdb_key', key);
-          localStorage.setItem('gemini_key', geminiKey);
-          localStorage.setItem('openai_key', openaiKey);
-
-          setState((prev) => ({
-            ...prev,
-            tmdbKey: key,
-            geminiKey,
-            openaiKey,
-          }));
-
-          if (currentUser) {
-            try {
-              await saveUserData(currentUser.uid, {
-                tmdbKey: key,
-                geminiKey,
-                openaiKey,
-              });
-            } catch (err) {
-              console.error('Error saving keys to Firestore:', err);
-            }
-          }
+          saveKeys(key, geminiKey, openaiKey);
         }}
       />
     </div>
