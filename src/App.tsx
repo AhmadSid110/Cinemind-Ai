@@ -18,10 +18,8 @@ import {
   Star,
 } from 'lucide-react';
 
-import { MediaItem, AppState, Episode, GeminiFilter } from './types';
+import { MediaItem, AppState } from './types';
 import * as tmdb from './services/tmdbService';
-import { analyzeQuery } from './services/geminiService';
-import { analyzeQueryWithOpenAI } from './services/openaiService';
 import MediaCard from './components/MediaCard';
 import DetailView from './components/DetailView';
 import PersonView from './components/PersonView';
@@ -39,7 +37,8 @@ import { useMediaSearch } from './hooks/useMediaSearch';
 const App: React.FC = () => {
   // ---------- HOOKS ----------
   const { user, login, logout } = useAuth();
-  const { tmdbKey, geminiKey, openaiKey, saveKeys, updateKeysFromCloud } = useApiKeys(user);
+  const { tmdbKey, geminiKey, openaiKey, saveKeys, updateKeysFromCloud } =
+    useApiKeys(user);
 
   // ---------- APP STATE ----------
   const [state, setState] = useState<AppState>({
@@ -55,9 +54,9 @@ const App: React.FC = () => {
   });
 
   // Cloud sync
-  const { syncing: isSyncingCloud } = useCloudSync({ 
-    user, 
-    state, 
+  const { syncing: isSyncingCloud } = useCloudSync({
+    user,
+    state,
     setState,
     tmdbKey,
     geminiKey,
@@ -85,7 +84,9 @@ const App: React.FC = () => {
     trendingTv,
     inTheaters: nowPlayingMovies,
     streamingNow: onAirTv,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     loading: homeFeedLoading,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     error: homeFeedError,
   } = useHomeFeed(tmdbKey);
 
@@ -109,6 +110,9 @@ const App: React.FC = () => {
     trendingTv,
   });
 
+  // Track whether search input is focused (for autocomplete visibility)
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+
   // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
     localStorage.setItem('favorites', JSON.stringify(state.favorites));
@@ -124,7 +128,8 @@ const App: React.FC = () => {
       view: 'trending',
       selectedItem: null,
       selectedPerson: null,
-      aiExplanation: "Here's what's hot right now across movies, series, in theatres and streaming.",
+      aiExplanation:
+        "Here's what's hot right now across movies, series, in theatres and streaming.",
     }));
   };
 
@@ -138,9 +143,10 @@ const App: React.FC = () => {
       return;
     }
 
+    setIsSearchFocused(false); // hide autocomplete
     setState((prev) => ({ ...prev, isLoading: true }));
     await search();
-    
+
     // Update state after search completes
     setState((prev) => ({
       ...prev,
@@ -193,10 +199,7 @@ const App: React.FC = () => {
       selectedItem: null,
     }));
     try {
-      const person = await tmdb.getPersonDetails(
-        tmdbKey,
-        personId
-      );
+      const person = await tmdb.getPersonDetails(tmdbKey, personId);
       setState((prev) => ({
         ...prev,
         selectedPerson: person,
@@ -232,6 +235,7 @@ const App: React.FC = () => {
   // ---------- AUTOCOMPLETE CLICK ----------
   const handleSuggestionClick = (item: MediaItem) => {
     selectSuggestion(item);
+    setIsSearchFocused(false); // hide dropdown after picking
     setState((prev) => ({
       ...prev,
       view: 'search',
@@ -299,6 +303,11 @@ const App: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setIsSearchFocused(true)}
+              onBlur={() => {
+                // delay so click on suggestion still registers
+                setTimeout(() => setIsSearchFocused(false), 150);
+              }}
               placeholder="Search titles or ask things like 'Top 20 sci-fi movies like Interstellar'"
               className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
             />
@@ -309,52 +318,46 @@ const App: React.FC = () => {
             )}
 
             {/* Autocomplete dropdown */}
-            {suggestions.length > 0 && searchQuery.trim() && (
-              <div className="absolute mt-2 left-0 right-0 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 max-h-80 overflow-y-auto">
-                {suggestions.map((sug, idx) => {
-                  const title = sug.title || sug.name;
-                  const date =
-                    sug.release_date || sug.first_air_date || '';
-                  const year = date
-                    ? new Date(date).getFullYear()
-                    : '';
-                  return (
-                    <button
-                      key={`${sug.id}-${idx}`}
-                      type="button"
-                      onClick={() => handleSuggestionClick(sug)}
-                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-800 border-b border-slate-800/60 last:border-b-0"
-                    >
-                      <div className="flex flex-col items-start">
-                        <span className="text-slate-100">
-                          {title}
-                        </span>
-                        <span className="text-xs text-slate-500">
-                          {(sug.media_type || '')
-                            .toUpperCase()}{' '}
-                          {year && `• ${year}`}
-                        </span>
-                      </div>
-                      {typeof sug.vote_average === 'number' && (
-                        <span className="text-xs text-amber-300 flex items-center gap-1">
-                          <Star size={12} />
-                          {sug.vote_average.toFixed(1)}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-                {isSuggestLoading && (
-                  <div className="px-3 py-2 text-xs text-slate-400 flex items-center gap-2">
-                    <Loader2
-                      size={14}
-                      className="animate-spin"
-                    />
-                    Updating suggestions…
-                  </div>
-                )}
-              </div>
-            )}
+            {suggestions.length > 0 &&
+              searchQuery.trim() &&
+              isSearchFocused && (
+                <div className="absolute mt-2 left-0 right-0 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 max-h-80 overflow-y-auto">
+                  {suggestions.map((sug, idx) => {
+                    const title = sug.title || sug.name;
+                    const date =
+                      sug.release_date || sug.first_air_date || '';
+                    const year = date ? new Date(date).getFullYear() : '';
+                    return (
+                      <button
+                        key={`${sug.id}-${idx}`}
+                        type="button"
+                        onClick={() => handleSuggestionClick(sug)}
+                        className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-800 border-b border-slate-800/60 last:border-b-0"
+                      >
+                        <div className="flex flex-col items-start">
+                          <span className="text-slate-100">{title}</span>
+                          <span className="text-xs text-slate-500">
+                            {(sug.media_type || '').toUpperCase()}{' '}
+                            {year && `• ${year}`}
+                          </span>
+                        </div>
+                        {typeof sug.vote_average === 'number' && (
+                          <span className="text-xs text-amber-300 flex items-center gap-1">
+                            <Star size={12} />
+                            {sug.vote_average.toFixed(1)}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  {isSuggestLoading && (
+                    <div className="px-3 py-2 text-xs text-slate-400 flex items-center gap-2">
+                      <Loader2 size={14} className="animate-spin" />
+                      Updating suggestions…
+                    </div>
+                  )}
+                </div>
+              )}
           </form>
 
           {/* Right actions */}
@@ -391,9 +394,7 @@ const App: React.FC = () => {
                 className="flex items-center gap-2 px-3 py-2 text-xs md:text-sm rounded-xl bg-slate-900/60 border border-white/10 hover:border-cyan-400/60 hover:bg-cyan-500/10 transition"
               >
                 <LogIn size={16} />
-                <span className="hidden md:inline">
-                  Sign in with Google
-                </span>
+                <span className="hidden md:inline">Sign in with Google</span>
               </button>
             )}
 
@@ -413,10 +414,7 @@ const App: React.FC = () => {
         {state.aiExplanation && !isSearching && (
           <div className="mb-10 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 border border-cyan-500/20 p-5 rounded-2xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="p-2 bg-cyan-500/10 rounded-lg">
-              <Sparkles
-                className="text-cyan-400 shrink-0"
-                size={20}
-              />
+              <Sparkles className="text-cyan-400 shrink-0" size={20} />
             </div>
             <div>
               <h3 className="text-cyan-200 font-bold text-sm uppercase tracking-wider mb-1">
@@ -432,10 +430,7 @@ const App: React.FC = () => {
         {/* Error Banner */}
         {state.error && (
           <div className="mb-8 bg-red-950/20 border border-red-500/30 p-4 rounded-2xl text-red-200 text-center flex flex-col items-center gap-2">
-            <Loader2
-              className="animate-spin text-red-400"
-              size={24}
-            />
+            <Loader2 className="animate-spin text-red-400" size={24} />
             {state.error}
           </div>
         )}
@@ -452,7 +447,8 @@ const App: React.FC = () => {
               <div className="bg-slate-900/50 p-1.5 rounded-xl flex gap-1 border border-white/5 backdrop-blur-md">
                 <button
                   onClick={() => setLibraryTab('favorites')}
-                  className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
+                  className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items
+                 -center gap-2 transition-all ${
                     libraryTab === 'favorites'
                       ? 'bg-slate-800 text-white shadow-lg ring-1 ring-white/10'
                       : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -479,9 +475,7 @@ const App: React.FC = () => {
                   <List
                     size={16}
                     className={
-                      libraryTab === 'watchlist'
-                        ? 'text-emerald-500'
-                        : ''
+                      libraryTab === 'watchlist' ? 'text-emerald-500' : ''
                     }
                   />{' '}
                   Watchlist
@@ -550,7 +544,7 @@ const App: React.FC = () => {
               items={nowPlayingMovies}
               onItemClick={handleCardClick}
               accentColor="emerald"
-              emptyMessage="No &quot;Now Playing&quot; movies available for your region."
+              emptyMessage='No "Now Playing" movies available for your region.'
             />
 
             <HorizontalCarousel
@@ -558,7 +552,7 @@ const App: React.FC = () => {
               items={onAirTv}
               onItemClick={handleCardClick}
               accentColor="indigo"
-              emptyMessage="No &quot;On The Air&quot; TV data available right now."
+              emptyMessage='No "On The Air" TV data available right now.'
             />
           </div>
         ) : (
@@ -574,10 +568,7 @@ const App: React.FC = () => {
             ) : (
               !isSearching && (
                 <div className="flex flex-col items-center justify-center py-32 text-slate-500">
-                  <Sparkles
-                    size={64}
-                    className="mb-6 text-slate-800"
-                  />
+                  <Sparkles size={64} className="mb-6 text-slate-800" />
                   <p className="text-xl font-light">
                     Start by typing what you feel like watching above.
                   </p>
@@ -594,9 +585,7 @@ const App: React.FC = () => {
           <button
             onClick={goToHome}
             className={`flex flex-col items-center gap-1.5 transition-colors ${
-              state.view === 'trending'
-                ? 'text-cyan-400'
-                : 'text-slate-500'
+              state.view === 'trending' ? 'text-cyan-400' : 'text-slate-500'
             }`}
           >
             <Home
@@ -612,9 +601,7 @@ const App: React.FC = () => {
               setState((prev) => ({ ...prev, view: 'library' }))
             }
             className={`flex flex-col items-center gap-1.5 transition-colors ${
-              state.view === 'library'
-                ? 'text-cyan-400'
-                : 'text-slate-500'
+              state.view === 'library' ? 'text-cyan-400' : 'text-slate-500'
             }`}
           >
             <Library
