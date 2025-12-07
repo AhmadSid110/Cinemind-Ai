@@ -59,6 +59,15 @@
         padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
       }
       
+      /* Hide scrollbar utility class */
+      .scrollbar-hide {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
+      }
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;  /* Chrome, Safari and Opera */
+      }
+      
       /* Landscape mode optimizations */
       @media screen and (orientation: landscape) and (max-height: 600px) {
         /* Reduce header height in landscape */

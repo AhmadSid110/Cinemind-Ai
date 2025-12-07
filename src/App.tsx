@@ -26,6 +26,7 @@ import MediaCard from './components/MediaCard';
 import DetailView from './components/DetailView';
 import PersonView from './components/PersonView';
 import SettingsModal from './components/SettingsModal';
+import HorizontalCarousel from './components/HorizontalCarousel';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
@@ -523,75 +524,39 @@ const App: React.FC = () => {
             </div>
           </div>
         ) : state.view === 'trending' ? (
-          // -------- HOME / TRENDING VIEW WITH MULTIPLE SECTIONS --------
+          // -------- HOME / TRENDING VIEW WITH HORIZONTAL CAROUSELS --------
           <div className="space-y-10 animate-in fade-in duration-500">
-            {/* Trending Movies */}
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                  <span className="w-2 h-8 bg-cyan-500 rounded-full" />
-                  Trending Movies
-                </h2>
-              </div>
-              {trendingMovies.length > 0 ? (
-                renderGrid(trendingMovies.slice(0, 20), false)
-              ) : (
-                <p className="text-slate-500 text-sm">
-                  No trending movies available right now.
-                </p>
-              )}
-            </section>
+            <HorizontalCarousel
+              title="Trending Movies"
+              items={trendingMovies}
+              onItemClick={handleCardClick}
+              accentColor="cyan"
+              emptyMessage="No trending movies available right now."
+            />
 
-            {/* Trending Series */}
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                  <span className="w-2 h-8 bg-fuchsia-500 rounded-full" />
-                  Trending Series
-                </h2>
-              </div>
-              {trendingTv.length > 0 ? (
-                renderGrid(trendingTv.slice(0, 20), false)
-              ) : (
-                <p className="text-slate-500 text-sm">
-                  No trending series available right now.
-                </p>
-              )}
-            </section>
+            <HorizontalCarousel
+              title="Trending Series"
+              items={trendingTv}
+              onItemClick={handleCardClick}
+              accentColor="fuchsia"
+              emptyMessage="No trending series available right now."
+            />
 
-            {/* In Theatres */}
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                  <span className="w-2 h-8 bg-emerald-500 rounded-full" />
-                  In Theatres Now
-                </h2>
-              </div>
-              {nowPlayingMovies.length > 0 ? (
-                renderGrid(nowPlayingMovies.slice(0, 20), false)
-              ) : (
-                <p className="text-slate-500 text-sm">
-                  No &quot;Now Playing&quot; movies available for your region.
-                </p>
-              )}
-            </section>
+            <HorizontalCarousel
+              title="In Theatres Now"
+              items={nowPlayingMovies}
+              onItemClick={handleCardClick}
+              accentColor="emerald"
+              emptyMessage="No &quot;Now Playing&quot; movies available for your region."
+            />
 
-            {/* Streaming Now on TV */}
-            <section>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-                  <span className="w-2 h-8 bg-indigo-500 rounded-full" />
-                  Streaming Now on TV
-                </h2>
-              </div>
-              {onAirTv.length > 0 ? (
-                renderGrid(onAirTv.slice(0, 20), false)
-              ) : (
-                <p className="text-slate-500 text-sm">
-                  No &quot;On The Air&quot; TV data available right now.
-                </p>
-              )}
-            </section>
+            <HorizontalCarousel
+              title="Streaming Now on TV"
+              items={onAirTv}
+              onItemClick={handleCardClick}
+              accentColor="indigo"
+              emptyMessage="No &quot;On The Air&quot; TV data available right now."
+            />
           </div>
         ) : (
           // -------- SEARCH RESULTS VIEW --------
