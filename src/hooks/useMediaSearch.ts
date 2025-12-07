@@ -55,29 +55,8 @@ export function useMediaSearch({
     return () => clearTimeout(handle);
   }, [searchQuery, tmdbKey]);
 
-  // Helper: detect "plain title" queries (no AI needed)
-  const isPlainTitleQuery = (raw: string) => {
-    if (!raw) return false;
-
-    // If user is clearly asking for "top N", don't treat as plain title
-    if (/top\s+\d+/i.test(raw)) return false;
-
-    // If query contains obvious instruction words, treat as AI query
-    if (
-      /\b(best|top|worst|similar|like|recommend|movies|movie|shows|series|list|episode|episodes)\b/i.test(
-        raw
-      )
-    ) {
-      return false;
-    }
-
-    // If it looks like a question, treat as AI query
-    if (/[?]/.test(raw)) return false;
-
-    // Short-ish: typical titles are not insanely long
-    if (raw.split(/\s+/).length > 6) return false;
-
-    return true;
+  const clearSuggestions = () => {
+    setSuggestions([]);
   };
 
   // ---------- SEARCH FUNCTION ----------
@@ -85,37 +64,15 @@ export function useMediaSearch({
     const raw = searchQuery.trim();
     if (!raw || !tmdbKey) return;
 
+    if (!geminiKey && !openaiKey) {
+      setError('Please add your Gemini or OpenAI API Key in settings to use AI Search.');
+      return;
+    }
+
     setIsSearching(true);
     setError(null);
     setExplanation(null);
     setSuggestions([]); // hide autocomplete on submit
-
-    // 1) PURE TITLE SEARCH → NO AI, JUST TMDB
-    if (isPlainTitleQuery(raw)) {
-      try {
-        const multi = await tmdb.searchMulti(tmdbKey, raw);
-        const limited = multi.slice(0, 50); // still cap results
-        setResults(limited);
-        setExplanation(`Results for "${raw}".`);
-      } catch (e) {
-        console.error(e);
-        setError(
-          'Sorry, I had trouble finding that title. Please try again.'
-        );
-      } finally {
-        setIsSearching(false);
-      }
-      return;
-    }
-
-    // 2) COMPLEX / NATURAL LANGUAGE QUERY → AI REQUIRED
-    if (!geminiKey && !openaiKey) {
-      setIsSearching(false);
-      setError(
-        'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
-      );
-      return;
-    }
 
     try {
       // detect "top N" from raw query (for limits)
@@ -140,26 +97,54 @@ export function useMediaSearch({
       }
       targetLimit = Math.min(targetLimit, 100); // safety cap
 
+      // ---------- Helpers for behavior decisions ----------
+      const hasTopKeyword =
+        /top\s+\d+/i.test(raw) ||
+        /\b(best|top rated|highest rated|highly rated)\b/i.test(raw);
+
+      const wordCount = raw.split(/\s+/).length;
+      const isShort = wordCount <= 4; // e.g. "Rick and Morty", "Breaking Bad"
+
+      const hasFilterSignals = Boolean(
+        (analysis.genres && analysis.genres.length) ||
+          analysis.with_people ||
+          analysis.year ||
+          analysis.language ||
+          analysis.sort_by ||
+          analysis.media_type
+      );
+
+      const isPlainTitleSearch =
+        !analysis.searchType ||
+        analysis.searchType === 'title' ||
+        (!hasTopKeyword && isShort && !hasFilterSignals);
+
+      // Normalize media_type so "series" works like "tv"
+      let mediaType = analysis.media_type as any;
+      if (mediaType) {
+        const mt = String(mediaType).toLowerCase();
+        if (mt === 'series' || mt === 'tv_show' || mt === 'show') {
+          mediaType = 'tv';
+        } else if (mt === 'film') {
+          mediaType = 'movie';
+        }
+      }
+
+      // ---------- Branches ----------
       if (analysis.searchType === 'trending') {
         // reuse our trending movies + tv if already loaded
         if (trendingMovies.length || trendingTv.length) {
-          searchResults = [...trendingMovies, ...trendingTv].slice(
-            0,
-            targetLimit
-          );
+          searchResults = [...trendingMovies, ...trendingTv].slice(0, targetLimit);
         } else {
           const combined = await tmdb.getTrending(tmdbKey);
           searchResults = combined.slice(0, targetLimit);
         }
       } else if (analysis.searchType === 'episode_ranking' && analysis.query) {
+        // EPISODE RANKING FLOW
         explanationText = `Finding top ranked episodes for "${analysis.query}"...`;
         setExplanation(explanationText);
 
-        const showId = await tmdb.findIdByName(
-          tmdbKey,
-          'tv',
-          analysis.query
-        );
+        const showId = await tmdb.findIdByName(tmdbKey, 'tv', analysis.query);
         if (!showId) throw new Error('Could not find that TV show.');
 
         const seasons = await tmdb.getShowSeasons(tmdbKey, showId);
@@ -193,8 +178,15 @@ export function useMediaSearch({
         })) as any;
 
         explanationText = `Top ${searchResults.length} highest-rated episodes of ${analysis.query}.`;
+      } else if (isPlainTitleSearch) {
+        // ---------- PLAIN TITLE SEARCH ----------
+        // For things like "Rick and Morty", "The Badlands", "Breaking Bad"
+        const plainQuery = raw;
+        const multi = await tmdb.searchMulti(tmdbKey, plainQuery);
+        searchResults = multi.slice(0, targetLimit);
+        explanationText = `Results matching "${plainQuery}".`;
       } else {
-        // General / "top X ..." movies & shows OR complex filtered queries
+        // ---------- GENERAL DISCOVER / TOP N FLOW ----------
         let personId = null;
         if (analysis.with_people) {
           personId = await tmdb.getPersonId(tmdbKey, analysis.with_people);
@@ -224,16 +216,16 @@ export function useMediaSearch({
           params['vote_count.gte'] = analysis.minVotes || 300;
         }
 
-        if (analysis.media_type) {
-          // discover for a specific type
+        if (mediaType === 'movie' || mediaType === 'tv') {
+          // discover for a specific type (movies or series)
           const page1 = await tmdb.discoverMedia(
             tmdbKey,
-            analysis.media_type,
+            mediaType,
             params
           );
           searchResults = page1;
         } else {
-          // fallback generic search (for non-plain but unstructured queries)
+          // generic multi search as a fallback
           const queryText = (analysis.query || raw).trim();
           const multi = await tmdb.searchMulti(tmdbKey, queryText);
           searchResults = multi;
@@ -285,5 +277,6 @@ export function useMediaSearch({
     error,
     search,
     selectSuggestion,
+    clearSuggestions,
   };
 }
