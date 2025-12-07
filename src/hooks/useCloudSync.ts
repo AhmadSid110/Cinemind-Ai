@@ -1,5 +1,5 @@
 // src/hooks/useCloudSync.ts
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { loadUserData, saveUserData } from '../firebase';
 import { AppState } from '../types';
 
@@ -7,13 +7,14 @@ interface UseCloudSyncProps {
   user: any;
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
+  updateKeysFromCloud?: (tmdbKey: string, geminiKey: string, openaiKey: string) => void;
 }
 
 /**
  * Hook for Firestore cloud synchronization.
  * Handles loading user data from cloud and continuous sync.
  */
-export function useCloudSync({ user, state, setState }: UseCloudSyncProps) {
+export function useCloudSync({ user, state, setState, updateKeysFromCloud }: UseCloudSyncProps) {
   const [syncing, setSyncing] = useState(false);
   const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
 
@@ -32,28 +33,27 @@ export function useCloudSync({ user, state, setState }: UseCloudSyncProps) {
         if (cloud) {
           const nextFavorites = cloud.favorites || [];
           const nextWatchlist = cloud.watchlist || [];
-          const nextTmdbKey = cloud.tmdbKey || '';
-          const nextGeminiKey = cloud.geminiKey || '';
-          const nextOpenaiKey = cloud.openaiKey || '';
           const nextUserRatings = cloud.userRatings || {};
 
           setState((prev) => ({
             ...prev,
             favorites: nextFavorites,
             watchlist: nextWatchlist,
-            tmdbKey: nextTmdbKey || prev.tmdbKey,
-            geminiKey: nextGeminiKey || prev.geminiKey,
-            openaiKey: nextOpenaiKey || prev.openaiKey,
             userRatings: nextUserRatings,
           }));
 
-          // sync localStorage to cloud
+          // sync localStorage
           localStorage.setItem('favorites', JSON.stringify(nextFavorites));
           localStorage.setItem('watchlist', JSON.stringify(nextWatchlist));
           localStorage.setItem('userRatings', JSON.stringify(nextUserRatings));
-          if (nextTmdbKey) localStorage.setItem('tmdb_key', nextTmdbKey);
-          if (nextGeminiKey) localStorage.setItem('gemini_key', nextGeminiKey);
-          if (nextOpenaiKey) localStorage.setItem('openai_key', nextOpenaiKey);
+
+          // Update keys via callback if provided
+          if (updateKeysFromCloud) {
+            const nextTmdbKey = cloud.tmdbKey || '';
+            const nextGeminiKey = cloud.geminiKey || '';
+            const nextOpenaiKey = cloud.openaiKey || '';
+            updateKeysFromCloud(nextTmdbKey, nextGeminiKey, nextOpenaiKey);
+          }
         } else {
           console.log('[SYNC] No cloud doc yet, will push local as initial');
         }
@@ -66,9 +66,9 @@ export function useCloudSync({ user, state, setState }: UseCloudSyncProps) {
     };
 
     loadFromCloud();
-  }, [user, setState]);
+  }, [user, setState, updateKeysFromCloud]);
 
-  // Continuous sync to Firestore
+  // Continuous sync to Firestore (favorites, watchlist, ratings only)
   useEffect(() => {
     const syncToCloud = async () => {
       if (!user || !hasLoadedCloud) return;
@@ -78,9 +78,6 @@ export function useCloudSync({ user, state, setState }: UseCloudSyncProps) {
         await saveUserData(user.uid, {
           favorites: state.favorites,
           watchlist: state.watchlist,
-          tmdbKey: state.tmdbKey,
-          geminiKey: state.geminiKey,
-          openaiKey: state.openaiKey,
           userRatings: state.userRatings,
         });
       } catch (err) {
@@ -96,9 +93,6 @@ export function useCloudSync({ user, state, setState }: UseCloudSyncProps) {
     hasLoadedCloud,
     state.favorites,
     state.watchlist,
-    state.tmdbKey,
-    state.geminiKey,
-    state.openaiKey,
     state.userRatings,
   ]);
 

@@ -30,21 +30,17 @@ import SettingsModal from './components/SettingsModal';
 // Hooks
 import { useAuth } from './hooks/useAuth';
 import { useCloudSync } from './hooks/useCloudSync';
-
-// Firebase helpers (for settings modal only)
-import { saveUserData } from './firebase';
+import { useApiKeys } from './hooks/useApiKeys';
 
 const App: React.FC = () => {
   // ---------- HOOKS ----------
   const { user, login, logout } = useAuth();
+  const { tmdbKey, geminiKey, openaiKey, saveKeys, updateKeysFromCloud } = useApiKeys(user);
 
   // ---------- APP STATE ----------
   const [state, setState] = useState<AppState>({
     view: 'trending',
     searchQuery: '',
-    tmdbKey: localStorage.getItem('tmdb_key') || '',
-    geminiKey: localStorage.getItem('gemini_key') || (process.env.API_KEY as string) || '',
-    openaiKey: localStorage.getItem('openai_key') || '',
     searchResults: [],
     selectedItem: null,
     selectedPerson: null,
@@ -57,9 +53,14 @@ const App: React.FC = () => {
   });
 
   // Cloud sync
-  const { syncing: isSyncingCloud } = useCloudSync({ user, state, setState });
+  const { syncing: isSyncingCloud } = useCloudSync({ 
+    user, 
+    state, 
+    setState,
+    updateKeysFromCloud,
+  });
 
-  const [isSettingsOpen, setIsSettingsOpen] = useState(!state.tmdbKey);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(!tmdbKey);
   const [libraryTab, setLibraryTab] =
     useState<'favorites' | 'watchlist'>('favorites');
   const [libraryFilter, setLibraryFilter] =
@@ -82,30 +83,18 @@ const App: React.FC = () => {
     localStorage.setItem('userRatings', JSON.stringify(state.userRatings));
   }, [state.favorites, state.watchlist, state.userRatings]);
 
-  useEffect(() => {
-    if (state.tmdbKey) {
-      localStorage.setItem('tmdb_key', state.tmdbKey);
-    }
-    if (state.geminiKey) {
-      localStorage.setItem('gemini_key', state.geminiKey);
-    }
-    if (state.openaiKey) {
-      localStorage.setItem('openai_key', state.openaiKey);
-    }
-  }, [state.tmdbKey, state.geminiKey, state.openaiKey]);
-
   // ---------- LOAD HOME SECTIONS WHEN TMDB KEY AVAILABLE ----------
   useEffect(() => {
-    if (state.tmdbKey) {
+    if (tmdbKey) {
       loadHomeSections();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.tmdbKey]);
+  }, [tmdbKey]);
 
   // ---------- AUTOCOMPLETE EFFECT ----------
   useEffect(() => {
     const q = state.searchQuery.trim();
-    if (!state.tmdbKey || !q) {
+    if (!tmdbKey || !q) {
       setSuggestions([]);
       return;
     }
@@ -114,7 +103,7 @@ const App: React.FC = () => {
       try {
         setIsSuggestLoading(true);
         const sug = await tmdb.getAutocompleteSuggestions(
-          state.tmdbKey,
+          tmdbKey,
           q,
           8
         );
@@ -127,12 +116,12 @@ const App: React.FC = () => {
     }, 300);
 
     return () => clearTimeout(handle);
-  }, [state.searchQuery, state.tmdbKey]);
+  }, [state.searchQuery, tmdbKey]);
 
   // ---------- ACTIONS ----------
 
   const loadHomeSections = async () => {
-    if (!state.tmdbKey) return;
+    if (!tmdbKey) return;
     setState((prev) => ({
       ...prev,
       isLoading: true,
@@ -149,10 +138,10 @@ const App: React.FC = () => {
         moviesNowPlaying,
         tvOnAir,
       ] = await Promise.all([
-        tmdb.getTrendingMovies(state.tmdbKey),
-        tmdb.getTrendingTv(state.tmdbKey),
-        tmdb.getNowPlayingMovies(state.tmdbKey),
-        tmdb.getOnTheAirTv(state.tmdbKey),
+        tmdb.getTrendingMovies(tmdbKey),
+        tmdb.getTrendingTv(tmdbKey),
+        tmdb.getNowPlayingMovies(tmdbKey),
+        tmdb.getOnTheAirTv(tmdbKey),
       ]);
 
       setTrendingMovies(moviesTrending);
@@ -184,9 +173,9 @@ const App: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!state.searchQuery.trim() || !state.tmdbKey) return;
+    if (!state.searchQuery.trim() || !tmdbKey) return;
 
-    if (!state.geminiKey && !state.openaiKey) {
+    if (!geminiKey && !openaiKey) {
       alert(
         'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
       );
@@ -209,13 +198,13 @@ const App: React.FC = () => {
 
       // AI analysis (OpenAI first, then Gemini)
       let analysis: GeminiFilter;
-      if (state.openaiKey) {
+      if (openaiKey) {
         analysis = await analyzeQueryWithOpenAI(
           state.searchQuery,
-          state.openaiKey
+          openaiKey
         );
       } else {
-        analysis = await analyzeQuery(state.searchQuery, state.geminiKey);
+        analysis = await analyzeQuery(state.searchQuery, geminiKey);
       }
 
       let results: MediaItem[] = [];
@@ -233,7 +222,7 @@ const App: React.FC = () => {
         if (trendingMovies.length || trendingTv.length) {
           results = [...trendingMovies, ...trendingTv].slice(0, targetLimit);
         } else {
-          const combined = await tmdb.getTrending(state.tmdbKey);
+          const combined = await tmdb.getTrending(tmdbKey);
           results = combined.slice(0, targetLimit);
         }
       } else if (analysis.searchType === 'episode_ranking' && analysis.query) {
@@ -241,20 +230,20 @@ const App: React.FC = () => {
         setState((prev) => ({ ...prev, aiExplanation: explanation }));
 
         const showId = await tmdb.findIdByName(
-          state.tmdbKey,
+          tmdbKey,
           'tv',
           analysis.query
         );
         if (!showId) throw new Error('Could not find that TV show.');
 
-        const seasons = await tmdb.getShowSeasons(state.tmdbKey, showId);
+        const seasons = await tmdb.getShowSeasons(tmdbKey, showId);
 
         const fetchPromises = seasons
           .filter((s) => s.season_number > 0)
           .slice(0, 15)
           .map((s) =>
             tmdb.getSeasonEpisodes(
-              state.tmdbKey,
+              tmdbKey,
               showId,
               s.season_number
             )
@@ -287,7 +276,7 @@ const App: React.FC = () => {
         let personId = null;
         if (analysis.with_people) {
           personId = await tmdb.getPersonId(
-            state.tmdbKey,
+            tmdbKey,
             analysis.with_people
           );
         }
@@ -319,7 +308,7 @@ const App: React.FC = () => {
         if (analysis.media_type) {
           // discover for a specific type
           const page1 = await tmdb.discoverMedia(
-            state.tmdbKey,
+            tmdbKey,
             analysis.media_type,
             params
           );
@@ -328,7 +317,7 @@ const App: React.FC = () => {
           // Plain title / generic search – trust the user's text more
           const queryText = (analysis.query || state.searchQuery).trim();
           const multi = await tmdb.searchMulti(
-            state.tmdbKey,
+            tmdbKey,
             queryText
           );
           results = multi;
@@ -379,11 +368,11 @@ const App: React.FC = () => {
       return;
     }
 
-    if (!state.tmdbKey) return;
+    if (!tmdbKey) return;
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
       const details = await tmdb.getDetails(
-        state.tmdbKey,
+        tmdbKey,
         item.media_type as 'movie' | 'tv',
         item.id
       );
@@ -410,7 +399,7 @@ const App: React.FC = () => {
     }));
     try {
       const person = await tmdb.getPersonDetails(
-        state.tmdbKey,
+        tmdbKey,
         personId
       );
       setState((prev) => ({
@@ -917,7 +906,7 @@ const App: React.FC = () => {
           onClose={() =>
             setState((prev) => ({ ...prev, selectedItem: null }))
           }
-          apiKey={state.tmdbKey}
+          apiKey={tmdbKey}
           onToggleFavorite={(i) => toggleList('favorites', i)}
           onToggleWatchlist={(i) => toggleList('watchlist', i)}
           isFavorite={state.favorites.some(
@@ -945,32 +934,11 @@ const App: React.FC = () => {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        currentKey={state.tmdbKey}
-        currentGeminiKey={state.geminiKey}
-        currentOpenAIKey={state.openaiKey}
+        currentKey={tmdbKey}
+        currentGeminiKey={geminiKey}
+        currentOpenAIKey={openaiKey}
         onSave={async (key, geminiKey, openaiKey) => {
-          localStorage.setItem('tmdb_key', key);
-          localStorage.setItem('gemini_key', geminiKey);
-          localStorage.setItem('openai_key', openaiKey);
-
-          setState((prev) => ({
-            ...prev,
-            tmdbKey: key,
-            geminiKey,
-            openaiKey,
-          }));
-
-          if (user) {
-            try {
-              await saveUserData(user.uid, {
-                tmdbKey: key,
-                geminiKey,
-                openaiKey,
-              });
-            } catch (err) {
-              console.error('Error saving keys to Firestore:', err);
-            }
-          }
+          saveKeys(key, geminiKey, openaiKey);
         }}
       />
     </div>
