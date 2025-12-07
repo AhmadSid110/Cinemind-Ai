@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GeminiFilter } from "../types";
 
 const SYSTEM_PROMPT = `
@@ -13,7 +13,7 @@ Supported Search Types:
 3. "trending": When user asks what is hot, new, or trending.
 
 Extraction Rules:
-- "genres": specific genre IDs (e.g., Action=28, Horror=27, Comedy=35, Drama=18, Sci-Fi=878, Romance=10749, Thriller=53, Animation=16, Documentary=99).
+- "genres": specific genre IDs (Action=28, Horror=27, Comedy=35, Drama=18, Sci-Fi=878, Romance=10749, Thriller=53, Animation=16, Documentary=99, Crime=80, Fantasy=14, Family=10751).
 - "year": extract release year if mentioned.
 - "sort_by": usually "popularity.desc" or "vote_average.desc".
 - "query": If it's a specific title or generic keyword search, put it here.
@@ -38,33 +38,43 @@ Output Schema:
 
 export const analyzeQuery = async (userQuery: string, apiKey: string): Promise<GeminiFilter> => {
   if (!apiKey) {
+    console.error("Gemini API Key is missing");
     throw new Error("Gemini API Key is missing");
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: userQuery,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        responseMimeType: "application/json"
-      }
+    // 1. Use the standard class
+    const genAI = new GoogleGenerativeAI(apiKey);
+    
+    // 2. Use the CORRECT model name (1.5-flash is current standard)
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-1.5-flash",
+      systemInstruction: SYSTEM_PROMPT, // System prompt moves here
+      generationConfig: { responseMimeType: "application/json" } // Force JSON
     });
 
-    const text = response.text;
+    const result = await model.generateContent(userQuery);
+    const response = await result.response;
+    
+    // 3. Call text() as a function
+    const text = response.text();
+    
     if (!text) throw new Error("No response from AI");
 
-    const parsed = JSON.parse(text);
+    // 4. Clean up any accidental markdown fences just in case
+    const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
+
+    const parsed = JSON.parse(cleanText);
     return parsed as GeminiFilter;
 
   } catch (error) {
-    console.error("Gemini Error:", error);
-    // Fallback to simple keyword search
+    console.error("Gemini Analysis Error:", error);
+    
+    // Fallback allows the app to keep functioning even if AI fails
     return {
       searchType: 'general',
       query: userQuery,
-      explanation: "I couldn't quite understand the specific filters, so I'm doing a general search."
+      explanation: "I couldn't verify the specific filters, so I'm doing a broad title search."
     };
   }
 };
