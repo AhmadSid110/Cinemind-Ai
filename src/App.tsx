@@ -32,6 +32,7 @@ import { useAuth } from './hooks/useAuth';
 import { useCloudSync } from './hooks/useCloudSync';
 import { useApiKeys } from './hooks/useApiKeys';
 import { useLibrary } from './hooks/useLibrary';
+import { useHomeFeed } from './hooks/useHomeFeed';
 
 const App: React.FC = () => {
   // ---------- HOOKS ----------
@@ -79,11 +80,15 @@ const App: React.FC = () => {
   const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
   const [isSuggestLoading, setIsSuggestLoading] = useState(false);
 
-  // ---------- HOME SECTIONS STATE ----------
-  const [trendingMovies, setTrendingMovies] = useState<MediaItem[]>([]);
-  const [trendingTv, setTrendingTv] = useState<MediaItem[]>([]);
-  const [nowPlayingMovies, setNowPlayingMovies] = useState<MediaItem[]>([]);
-  const [onAirTv, setOnAirTv] = useState<MediaItem[]>([]);
+  // ---------- HOME FEED ----------
+  const {
+    trendingMovies,
+    trendingTv,
+    inTheaters: nowPlayingMovies,
+    streamingNow: onAirTv,
+    loading: homeFeedLoading,
+    error: homeFeedError,
+  } = useHomeFeed(tmdbKey);
 
   // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
@@ -91,14 +96,6 @@ const App: React.FC = () => {
     localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
     localStorage.setItem('userRatings', JSON.stringify(state.userRatings));
   }, [state.favorites, state.watchlist, state.userRatings]);
-
-  // ---------- LOAD HOME SECTIONS WHEN TMDB KEY AVAILABLE ----------
-  useEffect(() => {
-    if (tmdbKey) {
-      loadHomeSections();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tmdbKey]);
 
   // ---------- AUTOCOMPLETE EFFECT ----------
   useEffect(() => {
@@ -129,55 +126,18 @@ const App: React.FC = () => {
 
   // ---------- ACTIONS ----------
 
-  const loadHomeSections = async () => {
-    if (!tmdbKey) return;
+  const goToHome = () => {
     setState((prev) => ({
       ...prev,
-      isLoading: true,
-      error: null,
       view: 'trending',
       selectedItem: null,
       selectedPerson: null,
+      aiExplanation: "Here's what's hot right now across movies, series, in theatres and streaming.",
+      searchResults: [
+        ...trendingMovies.slice(0, 10),
+        ...trendingTv.slice(0, 10),
+      ],
     }));
-
-    try {
-      const [
-        moviesTrending,
-        tvTrending,
-        moviesNowPlaying,
-        tvOnAir,
-      ] = await Promise.all([
-        tmdb.getTrendingMovies(tmdbKey),
-        tmdb.getTrendingTv(tmdbKey),
-        tmdb.getNowPlayingMovies(tmdbKey),
-        tmdb.getOnTheAirTv(tmdbKey),
-      ]);
-
-      setTrendingMovies(moviesTrending);
-      setTrendingTv(tvTrending);
-      setNowPlayingMovies(moviesNowPlaying);
-      setOnAirTv(tvOnAir);
-
-      // also keep some list in searchResults so existing code doesn't break
-      const combinedForState = [
-        ...moviesTrending.slice(0, 10),
-        ...tvTrending.slice(0, 10),
-      ];
-
-      setState((prev) => ({
-        ...prev,
-        searchResults: combinedForState,
-        isLoading: false,
-        aiExplanation: "Here's what's hot right now across movies, series, in theatres and streaming.",
-      }));
-    } catch (e) {
-      console.error(e);
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error: 'Failed to load home content. Check your TMDB key or network.',
-      }));
-    }
   };
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -488,7 +448,7 @@ const App: React.FC = () => {
           {/* Logo / Home */}
           <div
             className="flex items-center gap-3 cursor-pointer group"
-            onClick={loadHomeSections}
+            onClick={goToHome}
           >
             <div className="bg-gradient-to-br from-cyan-500 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40 transition-all duration-300">
               <Video className="text-white fill-white" size={20} />
@@ -850,7 +810,7 @@ const App: React.FC = () => {
       <nav className="fixed bottom-0 left-0 right-0 bg-[#020617]/90 backdrop-blur-xl border-t border-white/5 z-40 pb-safe">
         <div className="flex justify-around p-4">
           <button
-            onClick={loadHomeSections}
+            onClick={goToHome}
             className={`flex flex-col items-center gap-1.5 transition-colors ${
               state.view === 'trending'
                 ? 'text-cyan-400'
