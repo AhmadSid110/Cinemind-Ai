@@ -27,16 +27,17 @@ import DetailView from './components/DetailView';
 import PersonView from './components/PersonView';
 import SettingsModal from './components/SettingsModal';
 
-// Firebase helpers
-import {
-  auth,
-  loginWithGoogle,
-  subscribeToAuthChanges,
-  loadUserData,
-  saveUserData,
-} from './firebase';
+// Hooks
+import { useAuth } from './hooks/useAuth';
+import { useCloudSync } from './hooks/useCloudSync';
+
+// Firebase helpers (for settings modal only)
+import { saveUserData } from './firebase';
 
 const App: React.FC = () => {
+  // ---------- HOOKS ----------
+  const { user, login, logout } = useAuth();
+
   // ---------- APP STATE ----------
   const [state, setState] = useState<AppState>({
     view: 'trending',
@@ -55,16 +56,14 @@ const App: React.FC = () => {
     userRatings: JSON.parse(localStorage.getItem('userRatings') || '{}'),
   });
 
+  // Cloud sync
+  const { syncing: isSyncingCloud } = useCloudSync({ user, state, setState });
+
   const [isSettingsOpen, setIsSettingsOpen] = useState(!state.tmdbKey);
   const [libraryTab, setLibraryTab] =
     useState<'favorites' | 'watchlist'>('favorites');
   const [libraryFilter, setLibraryFilter] =
     useState<'all' | 'movie' | 'tv' | 'animation'>('all');
-
-  // ---------- FIREBASE USER / SYNC STATE ----------
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
-  const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
 
   // ---------- AUTOCOMPLETE STATE ----------
   const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
@@ -102,93 +101,6 @@ const App: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.tmdbKey]);
-
-  // ---------- FIREBASE AUTH SUBSCRIPTION (CLOUD-FIRST LOAD) ----------
-  useEffect(() => {
-    const unsub = subscribeToAuthChanges(async (user) => {
-      setCurrentUser(user);
-      setHasLoadedCloud(false);
-
-      if (!user) return;
-
-      try {
-        setIsSyncingCloud(true);
-        const cloud = await loadUserData(user.uid);
-
-        if (cloud) {
-          const nextFavorites = cloud.favorites || [];
-          const nextWatchlist = cloud.watchlist || [];
-          const nextTmdbKey = cloud.tmdbKey || '';
-          const nextGeminiKey = cloud.geminiKey || '';
-          const nextOpenaiKey = cloud.openaiKey || '';
-          const nextUserRatings = cloud.userRatings || {};
-
-          setState((prev) => ({
-            ...prev,
-            favorites: nextFavorites,
-            watchlist: nextWatchlist,
-            tmdbKey: nextTmdbKey || prev.tmdbKey,
-            geminiKey: nextGeminiKey || prev.geminiKey,
-            openaiKey: nextOpenaiKey || prev.openaiKey,
-            userRatings: nextUserRatings,
-          }));
-
-          // sync localStorage to cloud
-          localStorage.setItem('favorites', JSON.stringify(nextFavorites));
-          localStorage.setItem('watchlist', JSON.stringify(nextWatchlist));
-          localStorage.setItem('userRatings', JSON.stringify(nextUserRatings));
-          if (nextTmdbKey) localStorage.setItem('tmdb_key', nextTmdbKey);
-          if (nextGeminiKey) localStorage.setItem('gemini_key', nextGeminiKey);
-          if (nextOpenaiKey) localStorage.setItem('openai_key', nextOpenaiKey);
-        } else {
-          console.log('[SYNC] No cloud doc yet, will push local as initial');
-        }
-      } catch (err) {
-        console.error('Error loading user cloud data:', err);
-      } finally {
-        setIsSyncingCloud(false);
-        setHasLoadedCloud(true);
-      }
-    });
-
-    return () => unsub();
-  }, []);
-
-  // ---------- CONTINUOUS SYNC TO FIRESTORE ----------
-  useEffect(() => {
-    const sync = async () => {
-      if (!currentUser) return;
-      if (!hasLoadedCloud) return;
-
-      try {
-        setIsSyncingCloud(true);
-        await saveUserData(currentUser.uid, {
-          favorites: state.favorites,
-          watchlist: state.watchlist,
-          tmdbKey: state.tmdbKey,
-          geminiKey: state.geminiKey,
-          openaiKey: state.openaiKey,
-          userRatings: state.userRatings,
-        });
-      } catch (err) {
-        console.error('Error syncing to Firestore:', err);
-      } finally {
-        setIsSyncingCloud(false);
-      }
-    };
-
-    sync();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    currentUser,
-    hasLoadedCloud,
-    state.favorites,
-    state.watchlist,
-    state.tmdbKey,
-    state.geminiKey,
-    state.openaiKey,
-    state.userRatings,
-  ]);
 
   // ---------- AUTOCOMPLETE EFFECT ----------
   useEffect(() => {
@@ -540,7 +452,7 @@ const App: React.FC = () => {
   // ---------- AUTH HANDLERS ----------
   const handleLogin = async () => {
     try {
-      await loginWithGoogle();
+      await login();
     } catch (err) {
       console.error('Login error:', err);
       alert('Google login failed. Check console for details.');
@@ -549,7 +461,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      await auth.signOut();
+      await logout();
     } catch (err) {
       console.error('Logout error:', err);
     }
@@ -693,29 +605,29 @@ const App: React.FC = () => {
 
           {/* Right actions */}
           <div className="flex items-center gap-3">
-            {isSyncingCloud && currentUser && (
+            {isSyncingCloud && user && (
               <div className="flex items-center gap-1 text-xs text-cyan-300">
                 <Loader2 size={14} className="animate-spin" />
                 <span>Syncing</span>
               </div>
             )}
 
-            {currentUser ? (
+            {user ? (
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-2 px-3 py-2 text-xs md:text-sm rounded-xl bg-slate-900/60 border border-white/10 hover:border-red-400/60 hover:bg-red-500/10 transition"
               >
-                {currentUser.photoURL ? (
+                {user.photoURL ? (
                   <img
-                    src={currentUser.photoURL}
-                    alt={currentUser.displayName || 'User'}
+                    src={user.photoURL}
+                    alt={user.displayName || 'User'}
                     className="w-6 h-6 rounded-full"
                   />
                 ) : (
                   <UserCircle size={18} />
                 )}
                 <span className="hidden md:inline max-w-[120px] truncate">
-                  {currentUser.displayName || currentUser.email}
+                  {user.displayName || user.email}
                 </span>
                 <LogOut size={16} className="hidden md:inline" />
               </button>
@@ -1048,9 +960,9 @@ const App: React.FC = () => {
             openaiKey,
           }));
 
-          if (currentUser) {
+          if (user) {
             try {
-              await saveUserData(currentUser.uid, {
+              await saveUserData(user.uid, {
                 tmdbKey: key,
                 geminiKey,
                 openaiKey,
