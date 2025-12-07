@@ -33,6 +33,7 @@ import { useCloudSync } from './hooks/useCloudSync';
 import { useApiKeys } from './hooks/useApiKeys';
 import { useLibrary } from './hooks/useLibrary';
 import { useHomeFeed } from './hooks/useHomeFeed';
+import { useMediaSearch } from './hooks/useMediaSearch';
 
 const App: React.FC = () => {
   // ---------- HOOKS ----------
@@ -42,8 +43,6 @@ const App: React.FC = () => {
   // ---------- APP STATE ----------
   const [state, setState] = useState<AppState>({
     view: 'trending',
-    searchQuery: '',
-    searchResults: [],
     selectedItem: null,
     selectedPerson: null,
     isLoading: false,
@@ -76,10 +75,6 @@ const App: React.FC = () => {
   const [libraryFilter, setLibraryFilter] =
     useState<'all' | 'movie' | 'tv' | 'animation'>('all');
 
-  // ---------- AUTOCOMPLETE STATE ----------
-  const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
-  const [isSuggestLoading, setIsSuggestLoading] = useState(false);
-
   // ---------- HOME FEED ----------
   const {
     trendingMovies,
@@ -90,39 +85,32 @@ const App: React.FC = () => {
     error: homeFeedError,
   } = useHomeFeed(tmdbKey);
 
+  // ---------- MEDIA SEARCH ----------
+  const {
+    searchQuery,
+    setSearchQuery,
+    results: searchResults,
+    explanation: searchExplanation,
+    suggestions,
+    isSearching,
+    isSuggestLoading,
+    error: searchError,
+    search,
+    selectSuggestion,
+  } = useMediaSearch({
+    tmdbKey,
+    geminiKey,
+    openaiKey,
+    trendingMovies,
+    trendingTv,
+  });
+
   // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
     localStorage.setItem('favorites', JSON.stringify(state.favorites));
     localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
     localStorage.setItem('userRatings', JSON.stringify(state.userRatings));
   }, [state.favorites, state.watchlist, state.userRatings]);
-
-  // ---------- AUTOCOMPLETE EFFECT ----------
-  useEffect(() => {
-    const q = state.searchQuery.trim();
-    if (!tmdbKey || !q) {
-      setSuggestions([]);
-      return;
-    }
-
-    const handle = setTimeout(async () => {
-      try {
-        setIsSuggestLoading(true);
-        const sug = await tmdb.getAutocompleteSuggestions(
-          tmdbKey,
-          q,
-          8
-        );
-        setSuggestions(sug);
-      } catch (e) {
-        console.error('Autocomplete error:', e);
-      } finally {
-        setIsSuggestLoading(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(handle);
-  }, [state.searchQuery, tmdbKey]);
 
   // ---------- ACTIONS ----------
 
@@ -133,17 +121,11 @@ const App: React.FC = () => {
       selectedItem: null,
       selectedPerson: null,
       aiExplanation: "Here's what's hot right now across movies, series, in theatres and streaming.",
-      searchResults: [
-        ...trendingMovies.slice(0, 10),
-        ...trendingTv.slice(0, 10),
-      ],
     }));
   };
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!state.searchQuery.trim() || !tmdbKey) return;
-
     if (!geminiKey && !openaiKey) {
       alert(
         'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
@@ -152,177 +134,17 @@ const App: React.FC = () => {
       return;
     }
 
+    setState((prev) => ({ ...prev, isLoading: true }));
+    await search();
+    
+    // Update state after search completes
     setState((prev) => ({
       ...prev,
-      isLoading: true,
-      error: null,
-      aiExplanation: null,
+      view: 'search',
+      isLoading: false,
+      aiExplanation: searchExplanation,
+      error: searchError,
     }));
-    setSuggestions([]); // hide autocomplete on submit
-
-    try {
-      // detect "top N" from raw query (for limits)
-      const topMatch = state.searchQuery.match(/top\s+(\d+)/i);
-      const requestedLimit = topMatch ? parseInt(topMatch[1], 10) : undefined;
-
-      // AI analysis (OpenAI first, then Gemini)
-      let analysis: GeminiFilter;
-      if (openaiKey) {
-        analysis = await analyzeQueryWithOpenAI(
-          state.searchQuery,
-          openaiKey
-        );
-      } else {
-        analysis = await analyzeQuery(state.searchQuery, geminiKey);
-      }
-
-      let results: MediaItem[] = [];
-      let explanation =
-        analysis.explanation || 'Results based on your search.';
-
-      let targetLimit = analysis.limit || requestedLimit || 20;
-      if (!targetLimit || Number.isNaN(targetLimit) || targetLimit <= 0) {
-        targetLimit = 20;
-      }
-      targetLimit = Math.min(targetLimit, 100); // safety cap
-
-      if (analysis.searchType === 'trending') {
-        // reuse our trending movies + tv if already loaded
-        if (trendingMovies.length || trendingTv.length) {
-          results = [...trendingMovies, ...trendingTv].slice(0, targetLimit);
-        } else {
-          const combined = await tmdb.getTrending(tmdbKey);
-          results = combined.slice(0, targetLimit);
-        }
-      } else if (analysis.searchType === 'episode_ranking' && analysis.query) {
-        explanation = `Finding top ranked episodes for "${analysis.query}"...`;
-        setState((prev) => ({ ...prev, aiExplanation: explanation }));
-
-        const showId = await tmdb.findIdByName(
-          tmdbKey,
-          'tv',
-          analysis.query
-        );
-        if (!showId) throw new Error('Could not find that TV show.');
-
-        const seasons = await tmdb.getShowSeasons(tmdbKey, showId);
-
-        const fetchPromises = seasons
-          .filter((s) => s.season_number > 0)
-          .slice(0, 15)
-          .map((s) =>
-            tmdb.getSeasonEpisodes(
-              tmdbKey,
-              showId,
-              s.season_number
-            )
-          );
-
-        const seasonsEpisodes = await Promise.all(fetchPromises);
-        const allEpisodes: Episode[] = seasonsEpisodes.flat();
-
-        const sorted = allEpisodes.sort(
-          (a, b) => b.vote_average - a.vote_average
-        );
-
-        results = sorted.slice(0, targetLimit).map((ep) => ({
-          id: ep.id,
-          name: ep.name,
-          poster_path: null,
-          still_path: ep.still_path,
-          backdrop_path: ep.still_path,
-          overview: ep.overview,
-          vote_average: ep.vote_average,
-          air_date: ep.air_date,
-          media_type: 'tv',
-          season_number: ep.season_number,
-          episode_number: ep.episode_number,
-        })) as any;
-
-        explanation = `Top ${results.length} highest-rated episodes of ${analysis.query}.`;
-      } else {
-        // General / "top X ..." movies & shows OR plain title search
-        let personId = null;
-        if (analysis.with_people) {
-          personId = await tmdb.getPersonId(
-            tmdbKey,
-            analysis.with_people
-          );
-        }
-
-        const params: any = {
-          sort_by: analysis.sort_by || 'popularity.desc',
-          ...(analysis.genres && {
-            with_genres: analysis.genres.join(','),
-          }),
-          ...(analysis.year && {
-            primary_release_year: analysis.year,
-            first_air_date_year: analysis.year,
-          }),
-          ...(personId && { with_people: personId }),
-          ...(analysis.language && {
-            with_original_language: analysis.language,
-          }),
-        };
-
-        // If user asked "top N" or sort_by is rating -> enforce min votes
-        if (
-          /top\s+\d+/i.test(state.searchQuery) ||
-          (analysis.sort_by && analysis.sort_by.startsWith('vote_average'))
-        ) {
-          // this is TMDB discover filter: minimum vote count
-          params['vote_count.gte'] = analysis.minVotes || 300;
-        }
-
-        if (analysis.media_type) {
-          // discover for a specific type
-          const page1 = await tmdb.discoverMedia(
-            tmdbKey,
-            analysis.media_type,
-            params
-          );
-          results = page1;
-        } else {
-          // Plain title / generic search – trust the user's text more
-          const queryText = (analysis.query || state.searchQuery).trim();
-          const multi = await tmdb.searchMulti(
-            tmdbKey,
-            queryText
-          );
-          results = multi;
-        }
-
-        // sort by rating locally if requested
-        if (
-          analysis.sort_by &&
-          analysis.sort_by.startsWith('vote_average')
-        ) {
-          results = [...results].sort(
-            (a, b) => (b.vote_average || 0) - (a.vote_average || 0)
-          );
-        }
-
-        if (results.length > targetLimit) {
-          results = results.slice(0, targetLimit);
-        }
-      }
-
-      setState((prev) => ({
-        ...prev,
-        searchResults: results,
-        isLoading: false,
-        view: 'search',
-        aiExplanation: explanation,
-      }));
-    } catch (e) {
-      console.error(e);
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error:
-          'Sorry, I had trouble finding that. Try a simpler search or check your keys.',
-      }));
-    }
   };
 
   const handleCardClick = async (item: MediaItem) => {
@@ -405,15 +227,12 @@ const App: React.FC = () => {
 
   // ---------- AUTOCOMPLETE CLICK ----------
   const handleSuggestionClick = (item: MediaItem) => {
-    const title = item.title || item.name || '';
+    selectSuggestion(item);
     setState((prev) => ({
       ...prev,
-      searchQuery: title,
-      searchResults: [item],
       view: 'search',
       aiExplanation: null,
     }));
-    setSuggestions([]);
   };
 
   // ---------- HELPERS ----------
@@ -466,7 +285,7 @@ const App: React.FC = () => {
             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
               <Sparkles
                 className={`w-5 h-5 transition-colors ${
-                  state.isLoading
+                  isSearching
                     ? 'animate-pulse text-cyan-400'
                     : 'text-slate-500 group-focus-within:text-cyan-400'
                 }`}
@@ -474,24 +293,19 @@ const App: React.FC = () => {
             </div>
             <input
               type="text"
-              value={state.searchQuery}
-              onChange={(e) =>
-                setState((prev) => ({
-                  ...prev,
-                  searchQuery: e.target.value,
-                }))
-              }
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search titles or ask things like 'Top 20 sci-fi movies like Interstellar'"
               className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
             />
-            {state.isLoading && (
+            {isSearching && (
               <div className="absolute inset-y-0 right-4 flex items-center">
                 <Loader2 className="animate-spin text-cyan-500" size={20} />
               </div>
             )}
 
             {/* Autocomplete dropdown */}
-            {suggestions.length > 0 && state.searchQuery.trim() && (
+            {suggestions.length > 0 && searchQuery.trim() && (
               <div className="absolute mt-2 left-0 right-0 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 max-h-80 overflow-y-auto">
                 {suggestions.map((sug, idx) => {
                   const title = sug.title || sug.name;
@@ -592,7 +406,7 @@ const App: React.FC = () => {
       {/* MAIN CONTENT */}
       <main className="max-w-7xl mx-auto px-4 py-10">
         {/* AI Explanation Banner */}
-        {state.aiExplanation && !state.isLoading && (
+        {state.aiExplanation && !isSearching && (
           <div className="mb-10 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 border border-cyan-500/20 p-5 rounded-2xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="p-2 bg-cyan-500/10 rounded-lg">
               <Sparkles
@@ -788,9 +602,9 @@ const App: React.FC = () => {
             </h2>
             {state.searchResults.length > 0 ? (
               // ranking numbers ONLY when view === 'search'
-              renderGrid(state.searchResults, true)
+              renderGrid(searchResults, true)
             ) : (
-              !state.isLoading && (
+              !isSearching && (
                 <div className="flex flex-col items-center justify-center py-32 text-slate-500">
                   <Sparkles
                     size={64}
