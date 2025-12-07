@@ -1,4 +1,3 @@
-// src/hooks/useCloudSync.ts
 import { useState, useEffect, useRef } from 'react';
 import { loadUserData, saveUserData } from '../firebase';
 import { AppState } from '../types';
@@ -10,15 +9,20 @@ interface UseCloudSyncProps {
   tmdbKey: string;
   geminiKey: string;
   openaiKey: string;
-  // updates the key hook (useApiKeys) from cloud
-  updateKeysFromCloud?: (tmdbKey: string, geminiKey: string, openaiKey: string) => void;
+  /**
+   * Called when cloud has API keys – should update local key state + localStorage.
+   */
+  updateKeysFromCloud?: (
+    tmdbKey: string,
+    geminiKey: string,
+    openaiKey: string
+  ) => void;
 }
 
 /**
  * Hook for Firestore cloud synchronization.
- * - Loads user data ONCE per login.
- * - Continuously syncs changes (favorites, watchlist, ratings, API keys)
- *   but only when data really changed (using a stable JSON snapshot).
+ * - Loads user data once when user logs in
+ * - Then pushes changes (favorites, watchlist, ratings, keys) only when they change
  */
 export function useCloudSync({
   user,
@@ -32,76 +36,75 @@ export function useCloudSync({
   const [syncing, setSyncing] = useState(false);
   const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
 
-  // Holds the last data that was successfully synced to Firestore
-  const lastSyncedData = useRef<string | null>(null);
+  // Stable snapshot of last data we actually synced
+  const lastSyncedData = useRef<string>('');
 
-  /**
-   * Load user document from Firestore whenever the AUTH USER changes.
-   * IMPORTANT: dependency array is ONLY [user] to avoid re-running on every render.
-   */
+  // ------------ LOAD FROM CLOUD WHEN USER CHANGES ------------
   useEffect(() => {
-    // When user logs out, reset flags & snapshot
-    if (!user) {
-      setHasLoadedCloud(false);
-      lastSyncedData.current = null;
-      return;
-    }
-
     let cancelled = false;
 
     const loadFromCloud = async () => {
+      if (!user) {
+        // user logged out
+        setHasLoadedCloud(false);
+        lastSyncedData.current = '';
+        return;
+      }
+
       try {
         setSyncing(true);
         const cloud = await loadUserData(user.uid);
 
+        if (!cloud) {
+          console.log('[SYNC] No cloud doc yet, will push local as initial');
+          return;
+        }
+
+        const nextFavorites = cloud.favorites || [];
+        const nextWatchlist = cloud.watchlist || [];
+        const nextUserRatings = cloud.userRatings || {};
+
+        // Prefer cloud keys, but fall back to current ones if missing
+        const nextTmdbKey = cloud.tmdbKey ?? tmdbKey ?? '';
+        const nextGeminiKey = cloud.geminiKey ?? geminiKey ?? '';
+        const nextOpenaiKey = cloud.openaiKey ?? openaiKey ?? '';
+
         if (cancelled) return;
 
-        if (cloud) {
-          const nextFavorites = cloud.favorites || [];
-          const nextWatchlist = cloud.watchlist || [];
-          const nextUserRatings = cloud.userRatings || {};
+        // Update library state from cloud
+        setState(prev => ({
+          ...prev,
+          favorites: nextFavorites,
+          watchlist: nextWatchlist,
+          userRatings: nextUserRatings,
+        }));
 
-          const nextTmdbKey = cloud.tmdbKey || '';
-          const nextGeminiKey = cloud.geminiKey || '';
-          const nextOpenaiKey = cloud.openaiKey || '';
+        // Sync localStorage for library
+        localStorage.setItem('favorites', JSON.stringify(nextFavorites));
+        localStorage.setItem('watchlist', JSON.stringify(nextWatchlist));
+        localStorage.setItem('userRatings', JSON.stringify(nextUserRatings));
 
-          // Update app state with cloud library content
-          setState((prev) => ({
-            ...prev,
-            favorites: nextFavorites,
-            watchlist: nextWatchlist,
-            userRatings: nextUserRatings,
-          }));
-
-          // Keep localStorage in sync with cloud
-          localStorage.setItem('favorites', JSON.stringify(nextFavorites));
-          localStorage.setItem('watchlist', JSON.stringify(nextWatchlist));
-          localStorage.setItem('userRatings', JSON.stringify(nextUserRatings));
-
-          // Push API keys into the key hook (useApiKeys)
-          if (updateKeysFromCloud) {
-            updateKeysFromCloud(nextTmdbKey, nextGeminiKey, nextOpenaiKey);
-          }
-
-          // This snapshot MUST match the shape used by syncToCloud
-          lastSyncedData.current = JSON.stringify({
-            favorites: nextFavorites,
-            watchlist: nextWatchlist,
-            userRatings: nextUserRatings,
-            tmdbKey: nextTmdbKey,
-            geminiKey: nextGeminiKey,
-            openaiKey: nextOpenaiKey,
-          });
-
-          console.log('[SYNC] Loaded data from cloud and set initial snapshot');
+        // Tell the key hook to update its state + localStorage
+        if (updateKeysFromCloud) {
+          updateKeysFromCloud(nextTmdbKey, nextGeminiKey, nextOpenaiKey);
         } else {
-          console.log('[SYNC] No cloud doc yet, first local change will create one');
-          lastSyncedData.current = null;
+          // If callback not provided, at least keep localStorage consistent
+          localStorage.setItem('tmdb_key', nextTmdbKey);
+          localStorage.setItem('gemini_key', nextGeminiKey);
+          localStorage.setItem('openai_key', nextOpenaiKey);
         }
+
+        // Set the "last synced" snapshot to exactly what we'll push later
+        lastSyncedData.current = JSON.stringify({
+          favorites: nextFavorites,
+          watchlist: nextWatchlist,
+          userRatings: nextUserRatings,
+          tmdbKey: nextTmdbKey,
+          geminiKey: nextGeminiKey,
+          openaiKey: nextOpenaiKey,
+        });
       } catch (err) {
-        if (!cancelled) {
-          console.error('Error loading user cloud data:', err);
-        }
+        console.error('Error loading user cloud data:', err);
       } finally {
         if (!cancelled) {
           setSyncing(false);
@@ -115,66 +118,46 @@ export function useCloudSync({
     return () => {
       cancelled = true;
     };
-  // ⛔ DO NOT include setState or updateKeysFromCloud here – they change every render
-  }, [user, setState, updateKeysFromCloud]); // if ESLint complains, you can safely reduce to [user]
+    // 🔴 IMPORTANT: we intentionally DO NOT include updateKeysFromCloud here
+    // or it would re-run on every render. We only want this when `user` changes.
+  }, [user, setState, tmdbKey, geminiKey, openaiKey]);
 
-  /**
-   * Continuous sync to Firestore after initial cloud load.
-   * Only runs when:
-   *   - user is logged in
-   *   - initial cloud load has completed
-   *   - current data != lastSyncedData snapshot
-   */
+  // ------------ CONTINUOUS SYNC TO CLOUD WHEN DATA CHANGES ------------
   useEffect(() => {
-    if (!user) return;
-    if (!hasLoadedCloud) return;
-
-    // Build the exact payload we will sync
-    const dataToSync = {
-      favorites: state.favorites,
-      watchlist: state.watchlist,
-      userRatings: state.userRatings,
-      tmdbKey,
-      geminiKey,
-      openaiKey,
-    };
-
-    const currentDataString = JSON.stringify(dataToSync);
-
-    // If nothing has changed since last sync, do nothing
-    if (currentDataString === lastSyncedData.current) {
-      // Uncomment if you want to debug
-      // console.log('[SYNC] Skipping sync - no changes detected');
-      return;
-    }
-
-    let cancelled = false;
-
     const syncToCloud = async () => {
+      if (!user || !hasLoadedCloud) return;
+
+      const dataToSync = {
+        favorites: state.favorites,
+        watchlist: state.watchlist,
+        userRatings: state.userRatings,
+        tmdbKey,
+        geminiKey,
+        openaiKey,
+      };
+
+      const currentDataString = JSON.stringify(dataToSync);
+
+      // If nothing changed since last successful sync, skip
+      if (currentDataString === lastSyncedData.current) {
+        // console.log('[SYNC] Skipping sync - no data changes detected');
+        return;
+      }
+
       try {
         setSyncing(true);
-        console.log('[SYNC] Changes detected, syncing to cloud...');
+        console.log('[SYNC] Syncing data to cloud...');
         await saveUserData(user.uid, dataToSync);
-        if (!cancelled) {
-          lastSyncedData.current = currentDataString;
-          console.log('[SYNC] Sync complete, snapshot updated');
-        }
+        lastSyncedData.current = currentDataString;
+        console.log('[SYNC] Successfully synced to cloud');
       } catch (err) {
-        if (!cancelled) {
-          console.error('Error syncing to Firestore:', err);
-        }
+        console.error('Error syncing to Firestore:', err);
       } finally {
-        if (!cancelled) {
-          setSyncing(false);
-        }
+        setSyncing(false);
       }
     };
 
     syncToCloud();
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     user,
     hasLoadedCloud,
