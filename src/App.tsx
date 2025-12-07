@@ -1,3 +1,4 @@
+// src/App.tsx
 import React, { useState, useEffect } from 'react';
 import {
   Home,
@@ -41,7 +42,7 @@ const App: React.FC = () => {
     view: 'trending',
     searchQuery: '',
     tmdbKey: localStorage.getItem('tmdb_key') || '',
-    geminiKey: localStorage.getItem('gemini_key') || process.env.API_KEY || '',
+    geminiKey: localStorage.getItem('gemini_key') || (process.env.API_KEY as string) || '',
     openaiKey: localStorage.getItem('openai_key') || '',
     searchResults: [],
     selectedItem: null,
@@ -69,6 +70,12 @@ const App: React.FC = () => {
   const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
   const [isSuggestLoading, setIsSuggestLoading] = useState(false);
 
+  // ---------- HOME SECTIONS STATE ----------
+  const [trendingMovies, setTrendingMovies] = useState<MediaItem[]>([]);
+  const [trendingTv, setTrendingTv] = useState<MediaItem[]>([]);
+  const [nowPlayingMovies, setNowPlayingMovies] = useState<MediaItem[]>([]);
+  const [onAirTv, setOnAirTv] = useState<MediaItem[]>([]);
+
   // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
     localStorage.setItem('favorites', JSON.stringify(state.favorites));
@@ -88,10 +95,10 @@ const App: React.FC = () => {
     }
   }, [state.tmdbKey, state.geminiKey, state.openaiKey]);
 
-  // ---------- LOAD TRENDING WHEN TMDB KEY AVAILABLE ----------
+  // ---------- LOAD HOME SECTIONS WHEN TMDB KEY AVAILABLE ----------
   useEffect(() => {
     if (state.tmdbKey) {
-      loadTrending();
+      loadHomeSections();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.tmdbKey]);
@@ -212,7 +219,7 @@ const App: React.FC = () => {
 
   // ---------- ACTIONS ----------
 
-  const loadTrending = async () => {
+  const loadHomeSections = async () => {
     if (!state.tmdbKey) return;
     setState((prev) => ({
       ...prev,
@@ -222,20 +229,43 @@ const App: React.FC = () => {
       selectedItem: null,
       selectedPerson: null,
     }));
+
     try {
-      const results = await tmdb.getTrending(state.tmdbKey);
+      const [
+        moviesTrending,
+        tvTrending,
+        moviesNowPlaying,
+        tvOnAir,
+      ] = await Promise.all([
+        tmdb.getTrendingMovies(state.tmdbKey),
+        tmdb.getTrendingTv(state.tmdbKey),
+        tmdb.getNowPlayingMovies(state.tmdbKey),
+        tmdb.getOnTheAirTv(state.tmdbKey),
+      ]);
+
+      setTrendingMovies(moviesTrending);
+      setTrendingTv(tvTrending);
+      setNowPlayingMovies(moviesNowPlaying);
+      setOnAirTv(tvOnAir);
+
+      // also keep some list in searchResults so existing code doesn't break
+      const combinedForState = [
+        ...moviesTrending.slice(0, 10),
+        ...tvTrending.slice(0, 10),
+      ];
+
       setState((prev) => ({
         ...prev,
-        searchResults: results,
+        searchResults: combinedForState,
         isLoading: false,
-        aiExplanation:
-          "Here's what's popular today across movies and TV.",
+        aiExplanation: "Here's what's hot right now across movies, series, in theatres and streaming.",
       }));
     } catch (e) {
+      console.error(e);
       setState((prev) => ({
         ...prev,
         isLoading: false,
-        error: 'Failed to load trending content. Check your API Key.',
+        error: 'Failed to load home content. Check your TMDB key or network.',
       }));
     }
   };
@@ -287,7 +317,13 @@ const App: React.FC = () => {
       targetLimit = Math.min(targetLimit, 100); // safety cap
 
       if (analysis.searchType === 'trending') {
-        results = await tmdb.getTrending(state.tmdbKey);
+        // reuse our trending movies + tv if already loaded
+        if (trendingMovies.length || trendingTv.length) {
+          results = [...trendingMovies, ...trendingTv].slice(0, targetLimit);
+        } else {
+          const combined = await tmdb.getTrending(state.tmdbKey);
+          results = combined.slice(0, targetLimit);
+        }
       } else if (analysis.searchType === 'episode_ranking' && analysis.query) {
         explanation = `Finding top ranked episodes for "${analysis.query}"...`;
         setState((prev) => ({ ...prev, aiExplanation: explanation }));
@@ -335,7 +371,7 @@ const App: React.FC = () => {
 
         explanation = `Top ${results.length} highest-rated episodes of ${analysis.query}.`;
       } else {
-        // General / "top X ..." movies & shows
+        // General / "top X ..." movies & shows OR plain title search
         let personId = null;
         if (analysis.with_people) {
           personId = await tmdb.getPersonId(
@@ -364,6 +400,7 @@ const App: React.FC = () => {
           /top\s+\d+/i.test(state.searchQuery) ||
           (analysis.sort_by && analysis.sort_by.startsWith('vote_average'))
         ) {
+          // this is TMDB discover filter: minimum vote count
           params['vote_count.gte'] = analysis.minVotes || 300;
         }
 
@@ -376,10 +413,11 @@ const App: React.FC = () => {
           );
           results = page1;
         } else {
-          // generic multi search (for plain title search, this is the main path)
+          // Plain title / generic search – trust the user's text more
+          const queryText = (analysis.query || state.searchQuery).trim();
           const multi = await tmdb.searchMulti(
             state.tmdbKey,
-            analysis.query || state.searchQuery
+            queryText
           );
           results = multi;
         }
@@ -394,7 +432,6 @@ const App: React.FC = () => {
           );
         }
 
-        // respect targetLimit
         if (results.length > targetLimit) {
           results = results.slice(0, targetLimit);
         }
@@ -419,13 +456,13 @@ const App: React.FC = () => {
   };
 
   const handleCardClick = async (item: MediaItem) => {
-    if ((item as any).season_number) {
+    if ((item as any).season_number && (item as any).episode_number) {
       alert(
         `${item.name}\nSeason ${
           (item as any).season_number
         }, Episode ${
           (item as any).episode_number
-        }\nRating: ${item.vote_average}\n\n${item.overview}`
+        }\nRating: ${item.vote_average?.toFixed(1)}\n\n${item.overview}`
       );
       return;
     }
@@ -554,14 +591,6 @@ const App: React.FC = () => {
     return list.filter((i) => i.media_type === libraryFilter);
   };
 
-  // Derived lists for home screen
-  const trendingMovies = state.searchResults.filter(
-    (i) => i.media_type === 'movie'
-  );
-  const trendingSeries = state.searchResults.filter(
-    (i) => i.media_type === 'tv'
-  );
-
   // ---------- RENDER ----------
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 font-sans pb-24 selection:bg-cyan-500/30 selection:text-cyan-100">
@@ -571,7 +600,7 @@ const App: React.FC = () => {
           {/* Logo / Home */}
           <div
             className="flex items-center gap-3 cursor-pointer group"
-            onClick={loadTrending}
+            onClick={loadHomeSections}
           >
             <div className="bg-gradient-to-br from-cyan-500 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40 transition-all duration-300">
               <Video className="text-white fill-white" size={20} />
@@ -746,6 +775,7 @@ const App: React.FC = () => {
         )}
 
         {state.view === 'library' ? (
+          // -------- LIBRARY VIEW --------
           <div className="space-y-8 animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <h2 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400 flex items-center gap-3">
@@ -830,82 +860,99 @@ const App: React.FC = () => {
               )}
             </div>
           </div>
-        ) : (
-          <div className="animate-in fade-in duration-500 space-y-10">
-            {state.view === 'trending' ? (
-              <>
-                {/* Trending Movies */}
-                <section>
-                  <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
-                    <span className="w-2 h-8 bg-cyan-500 rounded-full" />
-                    Trending Movies
-                  </h2>
-                  {trendingMovies.length > 0 ? (
-                    renderGrid(trendingMovies, false)
-                  ) : (
-                    !state.isLoading && (
-                      <p className="text-slate-500">
-                        No trending movies found. Check your TMDB key.
-                      </p>
-                    )
-                  )}
-                </section>
-
-                {/* Trending Series */}
-                <section>
-                  <h2 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
-                    <span className="w-2 h-8 bg-violet-500 rounded-full" />
-                    Trending Series
-                  </h2>
-                  {trendingSeries.length > 0 ? (
-                    renderGrid(trendingSeries, false)
-                  ) : (
-                    !state.isLoading && (
-                      <p className="text-slate-500">
-                        No trending series found. Try again later.
-                      </p>
-                    )
-                  )}
-                </section>
-
-                {/* Fallback if both empty */}
-                {!state.isLoading &&
-                  trendingMovies.length === 0 &&
-                  trendingSeries.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-24 text-slate-500">
-                      <Sparkles
-                        size={64}
-                        className="mb-6 text-slate-800"
-                      />
-                      <p className="text-xl font-light">
-                        Nothing trending could be loaded. Check your TMDB key in settings.
-                      </p>
-                    </div>
-                  )}
-              </>
-            ) : (
-              <>
-                <h2 className="text-3xl font-bold text-white mb-8 capitalize flex items-center gap-3">
+        ) : state.view === 'trending' ? (
+          // -------- HOME / TRENDING VIEW WITH MULTIPLE SECTIONS --------
+          <div className="space-y-10 animate-in fade-in duration-500">
+            {/* Trending Movies */}
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
                   <span className="w-2 h-8 bg-cyan-500 rounded-full" />
-                  Search Results
+                  Trending Movies
                 </h2>
-                {state.searchResults.length > 0 ? (
-                  // ranking numbers ONLY when view === 'search'
-                  renderGrid(state.searchResults, true)
-                ) : (
-                  !state.isLoading && (
-                    <div className="flex flex-col items-center justify-center py-32 text-slate-500">
-                      <Sparkles
-                        size={64}
-                        className="mb-6 text-slate-800"
-                      />
-                      <p className="text-xl font-light">
-                        Start by typing what you feel like watching above.
-                      </p>
-                    </div>
-                  )
-                )}
-              </>
+              </div>
+              {trendingMovies.length > 0 ? (
+                renderGrid(trendingMovies.slice(0, 20), false)
+              ) : (
+                <p className="text-slate-500 text-sm">
+                  No trending movies available right now.
+                </p>
+              )}
+            </section>
+
+            {/* Trending Series */}
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                  <span className="w-2 h-8 bg-fuchsia-500 rounded-full" />
+                  Trending Series
+                </h2>
+              </div>
+              {trendingTv.length > 0 ? (
+                renderGrid(trendingTv.slice(0, 20), false)
+              ) : (
+                <p className="text-slate-500 text-sm">
+                  No trending series available right now.
+                </p>
+              )}
+            </section>
+
+            {/* In Theatres */}
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                  <span className="w-2 h-8 bg-emerald-500 rounded-full" />
+                  In Theatres Now
+                </h2>
+              </div>
+              {nowPlayingMovies.length > 0 ? (
+                renderGrid(nowPlayingMovies.slice(0, 20), false)
+              ) : (
+                <p className="text-slate-500 text-sm">
+                  No &quot;Now Playing&quot; movies available for your region.
+                </p>
+              )}
+            </section>
+
+            {/* Streaming Now on TV */}
+            <section>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+                  <span className="w-2 h-8 bg-indigo-500 rounded-full" />
+                  Streaming Now on TV
+                </h2>
+              </div>
+              {onAirTv.length > 0 ? (
+                renderGrid(onAirTv.slice(0, 20), false)
+              ) : (
+                <p className="text-slate-500 text-sm">
+                  No &quot;On The Air&quot; TV data available right now.
+                </p>
+              )}
+            </section>
+          </div>
+        ) : (
+          // -------- SEARCH RESULTS VIEW --------
+          <div className="animate-in fade-in duration-500">
+            <h2 className="text-3xl font-bold text-white mb-8 capitalize flex items-center gap-3">
+              <span className="w-2 h-8 bg-cyan-500 rounded-full" />
+              Search Results
+            </h2>
+            {state.searchResults.length > 0 ? (
+              // ranking numbers ONLY when view === 'search'
+              renderGrid(state.searchResults, true)
+            ) : (
+              !state.isLoading && (
+                <div className="flex flex-col items-center justify-center py-32 text-slate-500">
+                  <Sparkles
+                    size={64}
+                    className="mb-6 text-slate-800"
+                  />
+                  <p className="text-xl font-light">
+                    Start by typing what you feel like watching above.
+                  </p>
+                </div>
+              )
             )}
           </div>
         )}
@@ -915,7 +962,7 @@ const App: React.FC = () => {
       <nav className="fixed bottom-0 left-0 right-0 bg-[#020617]/90 backdrop-blur-xl border-t border-white/5 z-40 pb-safe">
         <div className="flex justify-around p-4">
           <button
-            onClick={loadTrending}
+            onClick={loadHomeSections}
             className={`flex flex-col items-center gap-1.5 transition-colors ${
               state.view === 'trending'
                 ? 'text-cyan-400'
