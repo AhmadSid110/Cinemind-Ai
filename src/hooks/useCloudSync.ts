@@ -7,6 +7,9 @@ interface UseCloudSyncProps {
   user: any;
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
+  tmdbKey: string;
+  geminiKey: string;
+  openaiKey: string;
   updateKeysFromCloud?: (tmdbKey: string, geminiKey: string, openaiKey: string) => void;
 }
 
@@ -14,7 +17,7 @@ interface UseCloudSyncProps {
  * Hook for Firestore cloud synchronization.
  * Handles loading user data from cloud and continuous sync.
  */
-export function useCloudSync({ user, state, setState, updateKeysFromCloud }: UseCloudSyncProps) {
+export function useCloudSync({ user, state, setState, tmdbKey, geminiKey, openaiKey, updateKeysFromCloud }: UseCloudSyncProps) {
   const [syncing, setSyncing] = useState(false);
   const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
   
@@ -54,8 +57,11 @@ export function useCloudSync({ user, state, setState, updateKeysFromCloud }: Use
           // Note: Keys are ordered consistently with syncToCloud for reliable comparison
           lastSyncedData.current = JSON.stringify({
             favorites: nextFavorites,
-            userRatings: nextUserRatings,
             watchlist: nextWatchlist,
+            userRatings: nextUserRatings,
+            tmdbKey: cloud.tmdbKey ?? '',
+            geminiKey: cloud.geminiKey ?? '',
+            openaiKey: cloud.openaiKey ?? '',
           });
 
           // Update keys via callback if provided
@@ -79,7 +85,7 @@ export function useCloudSync({ user, state, setState, updateKeysFromCloud }: Use
     loadFromCloud();
   }, [user, setState, updateKeysFromCloud]);
 
-  // Continuous sync to Firestore (favorites, watchlist, ratings only)
+  // Continuous sync to Firestore (favorites, watchlist, ratings, and API keys)
   useEffect(() => {
     const syncToCloud = async () => {
       if (!user || !hasLoadedCloud) return;
@@ -88,8 +94,11 @@ export function useCloudSync({ user, state, setState, updateKeysFromCloud }: Use
       // Note: Keys are ordered consistently to ensure reliable comparison
       const dataToSync = {
         favorites: state.favorites,
-        userRatings: state.userRatings,
         watchlist: state.watchlist,
+        userRatings: state.userRatings,
+        tmdbKey,
+        geminiKey,
+        openaiKey,
       };
       
       // Stringify the data to compare with previous sync
@@ -121,6 +130,9 @@ export function useCloudSync({ user, state, setState, updateKeysFromCloud }: Use
     hasLoadedCloud,
     state.favorites,
     state.watchlist,
+    tmdbKey,
+    geminiKey,
+    openaiKey,
     state.userRatings,
   ]);
 

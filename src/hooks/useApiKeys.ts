@@ -1,10 +1,9 @@
 // src/hooks/useApiKeys.ts
 import { useState, useEffect } from 'react';
-import { saveUserData } from '../firebase';
 
 /**
  * Hook for managing API keys (TMDB, Gemini, OpenAI).
- * Handles localStorage persistence and cloud sync for keys.
+ * Handles localStorage persistence. Cloud sync is handled by useCloudSync hook.
  */
 export function useApiKeys(user: any) {
   const [tmdbKey, setTmdbKey] = useState<string>(
@@ -16,25 +15,6 @@ export function useApiKeys(user: any) {
   const [openaiKey, setOpenaiKey] = useState<string>(
     localStorage.getItem('openai_key') || ''
   );
-
-  // Sync keys to cloud when user is logged in and keys change
-  useEffect(() => {
-    const syncKeysToCloud = async () => {
-      if (!user) return;
-
-      try {
-        await saveUserData(user.uid, {
-          tmdbKey,
-          geminiKey,
-          openaiKey,
-        });
-      } catch (err) {
-        console.error('Error syncing keys to Firestore:', err);
-      }
-    };
-
-    syncKeysToCloud();
-  }, [user, tmdbKey, geminiKey, openaiKey]);
 
   const saveKeys = (
     newTmdbKey: string,
