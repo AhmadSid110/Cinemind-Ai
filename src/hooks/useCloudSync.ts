@@ -1,5 +1,5 @@
 // src/hooks/useCloudSync.ts
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { loadUserData, saveUserData } from '../firebase';
 import { AppState } from '../types';
 
@@ -17,6 +17,9 @@ interface UseCloudSyncProps {
 export function useCloudSync({ user, state, setState, updateKeysFromCloud }: UseCloudSyncProps) {
   const [syncing, setSyncing] = useState(false);
   const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
+  
+  // Track the last synced data to prevent unnecessary syncs
+  const lastSyncedData = useRef<string>('');
 
   // Load user data from cloud when user logs in
   useEffect(() => {
@@ -47,6 +50,14 @@ export function useCloudSync({ user, state, setState, updateKeysFromCloud }: Use
           localStorage.setItem('watchlist', JSON.stringify(nextWatchlist));
           localStorage.setItem('userRatings', JSON.stringify(nextUserRatings));
 
+          // Update the last synced data to prevent immediate re-sync
+          // Note: Keys are ordered consistently with syncToCloud for reliable comparison
+          lastSyncedData.current = JSON.stringify({
+            favorites: nextFavorites,
+            userRatings: nextUserRatings,
+            watchlist: nextWatchlist,
+          });
+
           // Update keys via callback if provided
           if (updateKeysFromCloud) {
             const nextTmdbKey = cloud.tmdbKey || '';
@@ -73,13 +84,30 @@ export function useCloudSync({ user, state, setState, updateKeysFromCloud }: Use
     const syncToCloud = async () => {
       if (!user || !hasLoadedCloud) return;
 
+      // Create a stable representation of the data to sync
+      // Note: Keys are ordered consistently to ensure reliable comparison
+      const dataToSync = {
+        favorites: state.favorites,
+        userRatings: state.userRatings,
+        watchlist: state.watchlist,
+      };
+      
+      // Stringify the data to compare with previous sync
+      const currentDataString = JSON.stringify(dataToSync);
+      
+      // Skip sync if data hasn't actually changed
+      if (currentDataString === lastSyncedData.current) {
+        console.log('[SYNC] Skipping sync - no data changes detected');
+        return;
+      }
+
       try {
         setSyncing(true);
-        await saveUserData(user.uid, {
-          favorites: state.favorites,
-          watchlist: state.watchlist,
-          userRatings: state.userRatings,
-        });
+        console.log('[SYNC] Syncing data to cloud...');
+        await saveUserData(user.uid, dataToSync);
+        // Update the last synced data after successful sync
+        lastSyncedData.current = currentDataString;
+        console.log('[SYNC] Successfully synced to cloud');
       } catch (err) {
         console.error('Error syncing to Firestore:', err);
       } finally {
