@@ -117,7 +117,6 @@ const App: React.FC = () => {
   // ---------- ACTIONS ----------
 
   const goToHome = () => {
-    clearSuggestions();
     setState((prev) => ({
       ...prev,
       view: 'trending',
@@ -131,6 +130,7 @@ const App: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!geminiKey && !openaiKey) {
       alert(
         'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
@@ -139,16 +139,15 @@ const App: React.FC = () => {
       return;
     }
 
-    setState((prev) => ({ ...prev, isLoading: true, error: null }));
+    // switch to search view & show loader
+    setState((prev) => ({ ...prev, isLoading: true, view: 'search', error: null }));
+
     await search();
 
-    // Update state after search completes
+    // stop loader; explanation & searchError come from hook
     setState((prev) => ({
       ...prev,
-      view: 'search',
       isLoading: false,
-      aiExplanation: searchExplanation,
-      error: searchError,
     }));
   };
 
@@ -229,7 +228,6 @@ const App: React.FC = () => {
 
   // ---------- AUTOCOMPLETE CLICK ----------
   const handleSuggestionClick = (item: MediaItem) => {
-    // Called on mousedown so it fires before input blur clears suggestions
     selectSuggestion(item);
     setState((prev) => ({
       ...prev,
@@ -262,6 +260,12 @@ const App: React.FC = () => {
     return list.filter((i) => i.media_type === libraryFilter);
   };
 
+  // Decide which explanation/error to show:
+  const activeAiExplanation =
+    state.view === 'search' ? searchExplanation : state.aiExplanation;
+  const activeError =
+    state.view === 'search' ? searchError || state.error : state.error;
+
   // ---------- RENDER ----------
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 font-sans pb-24 selection:bg-cyan-500/30 selection:text-cyan-100">
@@ -285,6 +289,13 @@ const App: React.FC = () => {
           <form
             onSubmit={handleSearch}
             className="flex-1 max-w-2xl relative group"
+            // close suggestions when focus leaves the entire form
+            onBlur={(e) => {
+              const next = e.relatedTarget as HTMLElement | null;
+              if (!next || !e.currentTarget.contains(next)) {
+                clearSuggestions();
+              }
+            }}
           >
             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
               <Sparkles
@@ -299,7 +310,6 @@ const App: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onBlur={clearSuggestions}
               placeholder="Search titles or ask things like 'Top 20 sci-fi movies like Interstellar'"
               className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
             />
@@ -321,8 +331,7 @@ const App: React.FC = () => {
                     <button
                       key={`${sug.id}-${idx}`}
                       type="button"
-                      // use onMouseDown so it fires before input blur
-                      onMouseDown={() => handleSuggestionClick(sug)}
+                      onClick={() => handleSuggestionClick(sug)}
                       className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-800 border-b border-slate-800/60 last:border-b-0"
                     >
                       <div className="flex flex-col items-start">
@@ -385,7 +394,9 @@ const App: React.FC = () => {
                 className="flex items-center gap-2 px-3 py-2 text-xs md:text-sm rounded-xl bg-slate-900/60 border border-white/10 hover:border-cyan-400/60 hover:bg-cyan-500/10 transition"
               >
                 <LogIn size={16} />
-                <span className="hidden md:inline">Sign in with Google</span>
+                <span className="hidden md:inline">
+                  Sign in with Google
+                </span>
               </button>
             )}
 
@@ -402,7 +413,7 @@ const App: React.FC = () => {
       {/* MAIN CONTENT */}
       <main className="max-w-7xl mx-auto px-4 py-10">
         {/* AI Explanation Banner */}
-        {state.aiExplanation && !isSearching && (
+        {activeAiExplanation && !isSearching && (
           <div className="mb-10 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 border border-cyan-500/20 p-5 rounded-2xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="p-2 bg-cyan-500/10 rounded-lg">
               <Sparkles className="text-cyan-400 shrink-0" size={20} />
@@ -412,17 +423,17 @@ const App: React.FC = () => {
                 AI Analysis
               </h3>
               <p className="text-slate-300 leading-relaxed">
-                {state.aiExplanation}
+                {activeAiExplanation}
               </p>
             </div>
           </div>
         )}
 
-        {/* Error Banner */}
-        {state.error && (
+        {/* Error Banner (search errors or detail errors) */}
+        {activeError && (
           <div className="mb-8 bg-red-950/20 border border-red-500/30 p-4 rounded-2xl text-red-200 text-center flex flex-col items-center gap-2">
             <Loader2 className="animate-spin text-red-400" size={24} />
-            {state.error}
+            {activeError}
           </div>
         )}
 
@@ -465,7 +476,9 @@ const App: React.FC = () => {
                   <List
                     size={16}
                     className={
-                      libraryTab === 'watchlist' ? 'text-emerald-500' : ''
+                      libraryTab === 'watchlist'
+                        ? 'text-emerald-500'
+                        : ''
                     }
                   />{' '}
                   Watchlist
@@ -643,8 +656,8 @@ const App: React.FC = () => {
         currentKey={tmdbKey}
         currentGeminiKey={geminiKey}
         currentOpenAIKey={openaiKey}
-        onSave={async (key, gKey, oKey) => {
-          saveKeys(key, gKey, oKey);
+        onSave={async (key, newGeminiKey, newOpenaiKey) => {
+          saveKeys(key, newGeminiKey, newOpenaiKey);
         }}
       />
     </div>
