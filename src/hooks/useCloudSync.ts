@@ -51,10 +51,11 @@ export function useCloudSync({ user, state, setState, updateKeysFromCloud }: Use
           localStorage.setItem('userRatings', JSON.stringify(nextUserRatings));
 
           // Update the last synced data to prevent immediate re-sync
+          // Note: Keys are ordered consistently with syncToCloud for reliable comparison
           lastSyncedData.current = JSON.stringify({
             favorites: nextFavorites,
-            watchlist: nextWatchlist,
             userRatings: nextUserRatings,
+            watchlist: nextWatchlist,
           });
 
           // Update keys via callback if provided
@@ -84,10 +85,11 @@ export function useCloudSync({ user, state, setState, updateKeysFromCloud }: Use
       if (!user || !hasLoadedCloud) return;
 
       // Create a stable representation of the data to sync
+      // Note: Keys are ordered consistently to ensure reliable comparison
       const dataToSync = {
         favorites: state.favorites,
-        watchlist: state.watchlist,
         userRatings: state.userRatings,
+        watchlist: state.watchlist,
       };
       
       // Stringify the data to compare with previous sync
@@ -95,14 +97,17 @@ export function useCloudSync({ user, state, setState, updateKeysFromCloud }: Use
       
       // Skip sync if data hasn't actually changed
       if (currentDataString === lastSyncedData.current) {
+        console.log('[SYNC] Skipping sync - no data changes detected');
         return;
       }
 
       try {
         setSyncing(true);
+        console.log('[SYNC] Syncing data to cloud...');
         await saveUserData(user.uid, dataToSync);
         // Update the last synced data after successful sync
         lastSyncedData.current = currentDataString;
+        console.log('[SYNC] Successfully synced to cloud');
       } catch (err) {
         console.error('Error syncing to Firestore:', err);
       } finally {
