@@ -58,10 +58,10 @@ export function useCloudSync({ user, state, setState, tmdbKey, geminiKey, openai
           lastSyncedData.current = JSON.stringify({
             favorites: nextFavorites,
             watchlist: nextWatchlist,
+            userRatings: nextUserRatings,
             tmdbKey: cloud.tmdbKey ?? '',
             geminiKey: cloud.geminiKey ?? '',
             openaiKey: cloud.openaiKey ?? '',
-            userRatings: nextUserRatings,
           });
 
           // Update keys via callback if provided
@@ -95,10 +95,10 @@ export function useCloudSync({ user, state, setState, tmdbKey, geminiKey, openai
       const dataToSync = {
         favorites: state.favorites,
         watchlist: state.watchlist,
+        userRatings: state.userRatings,
         tmdbKey,
         geminiKey,
         openaiKey,
-        userRatings: state.userRatings,
       };
       
       // Stringify the data to compare with previous sync
