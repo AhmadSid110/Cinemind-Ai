@@ -84,10 +84,6 @@ const App: React.FC = () => {
     trendingTv,
     inTheaters: nowPlayingMovies,
     streamingNow: onAirTv,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    loading: homeFeedLoading,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    error: homeFeedError,
   } = useHomeFeed(tmdbKey);
 
   // ---------- MEDIA SEARCH ----------
@@ -102,6 +98,7 @@ const App: React.FC = () => {
     error: searchError,
     search,
     selectSuggestion,
+    clearSuggestions,
   } = useMediaSearch({
     tmdbKey,
     geminiKey,
@@ -109,9 +106,6 @@ const App: React.FC = () => {
     trendingMovies,
     trendingTv,
   });
-
-  // Track whether search input is focused (for autocomplete visibility)
-  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
@@ -123,6 +117,7 @@ const App: React.FC = () => {
   // ---------- ACTIONS ----------
 
   const goToHome = () => {
+    clearSuggestions();
     setState((prev) => ({
       ...prev,
       view: 'trending',
@@ -130,6 +125,7 @@ const App: React.FC = () => {
       selectedPerson: null,
       aiExplanation:
         "Here's what's hot right now across movies, series, in theatres and streaming.",
+      error: null,
     }));
   };
 
@@ -143,8 +139,7 @@ const App: React.FC = () => {
       return;
     }
 
-    setIsSearchFocused(false); // hide autocomplete
-    setState((prev) => ({ ...prev, isLoading: true }));
+    setState((prev) => ({ ...prev, isLoading: true, error: null }));
     await search();
 
     // Update state after search completes
@@ -234,12 +229,13 @@ const App: React.FC = () => {
 
   // ---------- AUTOCOMPLETE CLICK ----------
   const handleSuggestionClick = (item: MediaItem) => {
+    // Called on mousedown so it fires before input blur clears suggestions
     selectSuggestion(item);
-    setIsSearchFocused(false); // hide dropdown after picking
     setState((prev) => ({
       ...prev,
       view: 'search',
       aiExplanation: null,
+      error: null,
     }));
   };
 
@@ -303,11 +299,7 @@ const App: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setIsSearchFocused(true)}
-              onBlur={() => {
-                // delay so click on suggestion still registers
-                setTimeout(() => setIsSearchFocused(false), 150);
-              }}
+              onBlur={clearSuggestions}
               placeholder="Search titles or ask things like 'Top 20 sci-fi movies like Interstellar'"
               className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
             />
@@ -318,46 +310,45 @@ const App: React.FC = () => {
             )}
 
             {/* Autocomplete dropdown */}
-            {suggestions.length > 0 &&
-              searchQuery.trim() &&
-              isSearchFocused && (
-                <div className="absolute mt-2 left-0 right-0 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 max-h-80 overflow-y-auto">
-                  {suggestions.map((sug, idx) => {
-                    const title = sug.title || sug.name;
-                    const date =
-                      sug.release_date || sug.first_air_date || '';
-                    const year = date ? new Date(date).getFullYear() : '';
-                    return (
-                      <button
-                        key={`${sug.id}-${idx}`}
-                        type="button"
-                        onClick={() => handleSuggestionClick(sug)}
-                        className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-800 border-b border-slate-800/60 last:border-b-0"
-                      >
-                        <div className="flex flex-col items-start">
-                          <span className="text-slate-100">{title}</span>
-                          <span className="text-xs text-slate-500">
-                            {(sug.media_type || '').toUpperCase()}{' '}
-                            {year && `• ${year}`}
-                          </span>
-                        </div>
-                        {typeof sug.vote_average === 'number' && (
-                          <span className="text-xs text-amber-300 flex items-center gap-1">
-                            <Star size={12} />
-                            {sug.vote_average.toFixed(1)}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                  {isSuggestLoading && (
-                    <div className="px-3 py-2 text-xs text-slate-400 flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" />
-                      Updating suggestions…
-                    </div>
-                  )}
-                </div>
-              )}
+            {suggestions.length > 0 && searchQuery.trim() && (
+              <div className="absolute mt-2 left-0 right-0 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 max-h-80 overflow-y-auto">
+                {suggestions.map((sug, idx) => {
+                  const title = sug.title || sug.name;
+                  const date =
+                    sug.release_date || sug.first_air_date || '';
+                  const year = date ? new Date(date).getFullYear() : '';
+                  return (
+                    <button
+                      key={`${sug.id}-${idx}`}
+                      type="button"
+                      // use onMouseDown so it fires before input blur
+                      onMouseDown={() => handleSuggestionClick(sug)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-800 border-b border-slate-800/60 last:border-b-0"
+                    >
+                      <div className="flex flex-col items-start">
+                        <span className="text-slate-100">{title}</span>
+                        <span className="text-xs text-slate-500">
+                          {(sug.media_type || '').toUpperCase()}{' '}
+                          {year && `• ${year}`}
+                        </span>
+                      </div>
+                      {typeof sug.vote_average === 'number' && (
+                        <span className="text-xs text-amber-300 flex items-center gap-1">
+                          <Star size={12} />
+                          {sug.vote_average.toFixed(1)}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+                {isSuggestLoading && (
+                  <div className="px-3 py-2 text-xs text-slate-400 flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin" />
+                    Updating suggestions…
+                  </div>
+                )}
+              </div>
+            )}
           </form>
 
           {/* Right actions */}
@@ -447,8 +438,7 @@ const App: React.FC = () => {
               <div className="bg-slate-900/50 p-1.5 rounded-xl flex gap-1 border border-white/5 backdrop-blur-md">
                 <button
                   onClick={() => setLibraryTab('favorites')}
-                  className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items
-                 -center gap-2 transition-all ${
+                  className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
                     libraryTab === 'favorites'
                       ? 'bg-slate-800 text-white shadow-lg ring-1 ring-white/10'
                       : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -653,8 +643,8 @@ const App: React.FC = () => {
         currentKey={tmdbKey}
         currentGeminiKey={geminiKey}
         currentOpenAIKey={openaiKey}
-        onSave={async (key, geminiKey, openaiKey) => {
-          saveKeys(key, geminiKey, openaiKey);
+        onSave={async (key, gKey, oKey) => {
+          saveKeys(key, gKey, oKey);
         }}
       />
     </div>
