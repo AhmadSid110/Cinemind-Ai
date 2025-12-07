@@ -1,4 +1,3 @@
-// src/hooks/useMediaSearch.ts
 import { useState, useEffect } from 'react';
 import { MediaItem, Episode, GeminiFilter } from '../types';
 import * as tmdb from '../services/tmdbService';
@@ -60,9 +59,7 @@ export function useMediaSearch({
     if (!searchQuery.trim() || !tmdbKey) return;
 
     if (!geminiKey && !openaiKey) {
-      setError(
-        'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
-      );
+      setError('Please add your Gemini or OpenAI API Key in settings to use AI Search.');
       return;
     }
 
@@ -97,26 +94,16 @@ export function useMediaSearch({
       if (analysis.searchType === 'trending') {
         // reuse our trending movies + tv if already loaded
         if (trendingMovies.length || trendingTv.length) {
-          searchResults = [...trendingMovies, ...trendingTv].slice(
-            0,
-            targetLimit
-          );
+          searchResults = [...trendingMovies, ...trendingTv].slice(0, targetLimit);
         } else {
           const combined = await tmdb.getTrending(tmdbKey);
           searchResults = combined.slice(0, targetLimit);
         }
-      } else if (
-        analysis.searchType === 'episode_ranking' &&
-        analysis.query
-      ) {
+      } else if (analysis.searchType === 'episode_ranking' && analysis.query) {
         explanationText = `Finding top ranked episodes for "${analysis.query}"...`;
         setExplanation(explanationText);
 
-        const showId = await tmdb.findIdByName(
-          tmdbKey,
-          'tv',
-          analysis.query
-        );
+        const showId = await tmdb.findIdByName(tmdbKey, 'tv', analysis.query);
         if (!showId) throw new Error('Could not find that TV show.');
 
         const seasons = await tmdb.getShowSeasons(tmdbKey, showId);
@@ -231,7 +218,6 @@ export function useMediaSearch({
     setSuggestions([]);
   };
 
-  /** Allow parent (App) to hide dropdown on outside click / blur */
   const clearSuggestions = () => {
     setSuggestions([]);
   };
