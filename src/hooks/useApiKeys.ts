@@ -11,30 +11,11 @@ export function useApiKeys(user: any) {
     localStorage.getItem('tmdb_key') || ''
   );
   const [geminiKey, setGeminiKey] = useState<string>(
-    localStorage.getItem('gemini_key') || (process.env.API_KEY as string) || ''
+    localStorage.getItem('gemini_key') || (process.env.VITE_API_KEY as string) || ''
   );
   const [openaiKey, setOpenaiKey] = useState<string>(
     localStorage.getItem('openai_key') || ''
   );
-
-  // Persist keys to localStorage whenever they change
-  useEffect(() => {
-    if (tmdbKey) {
-      localStorage.setItem('tmdb_key', tmdbKey);
-    }
-  }, [tmdbKey]);
-
-  useEffect(() => {
-    if (geminiKey) {
-      localStorage.setItem('gemini_key', geminiKey);
-    }
-  }, [geminiKey]);
-
-  useEffect(() => {
-    if (openaiKey) {
-      localStorage.setItem('openai_key', openaiKey);
-    }
-  }, [openaiKey]);
 
   // Sync keys to cloud when user is logged in and keys change
   useEffect(() => {

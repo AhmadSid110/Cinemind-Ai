@@ -600,7 +600,7 @@ const App: React.FC = () => {
               <span className="w-2 h-8 bg-cyan-500 rounded-full" />
               Search Results
             </h2>
-            {state.searchResults.length > 0 ? (
+            {searchResults.length > 0 ? (
               // ranking numbers ONLY when view === 'search'
               renderGrid(searchResults, true)
             ) : (
