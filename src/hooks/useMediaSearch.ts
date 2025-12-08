@@ -14,8 +14,42 @@ interface UseMediaSearchProps {
 }
 
 /**
- * Hook for media search functionality.
- * Handles search query, autocomplete, AI analysis, and result fetching.
+ * Helper: infer clean media_type ('movie' | 'tv' | null)
+ * from AI output + raw user query (handles "series", "tv show", etc.)
+ */
+function inferMediaType(
+  aiMediaType: string | undefined,
+  query: string
+): 'movie' | 'tv' | null {
+  const mt = (aiMediaType || '').toLowerCase();
+  if (['movie', 'movies', 'film', 'films'].includes(mt)) return 'movie';
+  if (['tv', 'tv_show', 'tv show', 'tv series', 'series', 'show', 'shows'].includes(mt)) return 'tv';
+
+  const q = query.toLowerCase();
+  if (/\b(movie|movies|film|films)\b/.test(q)) return 'movie';
+  if (/\b(series|tv|show|shows|anime)\b/.test(q)) return 'tv';
+
+  return null;
+}
+
+/**
+ * Helper: detect "ranking-style" queries like "top 10 horror series",
+ * "best rated sci fi movies", etc.
+ */
+function isRankingQuery(query: string, analysis?: GeminiFilter): boolean {
+  const q = query.toLowerCase();
+  if (/top\s+\d+/.test(q)) return true;
+  if (/\b(best|greatest|highest rated|top rated)\b/.test(q)) return true;
+  if (analysis?.sort_by && analysis.sort_by.startsWith('vote_average')) return true;
+  return false;
+}
+
+/**
+ * Hook for media search:
+ * - AI analysis (Gemini / OpenAI)
+ * - Episode ranking
+ * - Title / discover search
+ * - Autocomplete suggestions
  */
 export function useMediaSearch({
   tmdbKey,
@@ -27,12 +61,13 @@ export function useMediaSearch({
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<MediaItem[]>([]);
   const [explanation, setExplanation] = useState<string | null>(null);
+
   const [suggestions, setSuggestions] = useState<MediaItem[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isSuggestLoading, setIsSuggestLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ---------- AUTOCOMPLETE EFFECT ----------
+  // ---------- AUTOCOMPLETE ----------
   useEffect(() => {
     const q = searchQuery.trim();
     if (!tmdbKey || !q) {
@@ -55,27 +90,40 @@ export function useMediaSearch({
     return () => clearTimeout(handle);
   }, [searchQuery, tmdbKey]);
 
-  // ---------- SEARCH FUNCTION ----------
+  // ---------- MAIN SEARCH ----------
   const search = async () => {
     const raw = searchQuery.trim();
     if (!raw || !tmdbKey) return;
 
     if (!geminiKey && !openaiKey) {
-      setError('Please add your Gemini or OpenAI API Key in settings to use AI Search.');
+      // We *still* allow plain title search in this case
+      try {
+        setIsSearching(true);
+        setError(null);
+        setExplanation(null);
+        setSuggestions([]);
+
+        const multi = await tmdb.searchMulti(tmdbKey, raw);
+        setResults(multi);
+        setExplanation('Results based on your title search.');
+      } catch (e) {
+        console.error(e);
+        setError(
+          'Sorry, I had trouble finding that. Try again or add an AI key for smarter search.'
+        );
+      } finally {
+        setIsSearching(false);
+      }
       return;
     }
 
     setIsSearching(true);
     setError(null);
     setExplanation(null);
-    setSuggestions([]); // hide autocomplete on submit
+    setSuggestions([]);
 
     try {
-      // detect "top N" from raw query (for limits)
-      const topMatch = raw.match(/top\s+(\d+)/i);
-      const requestedLimit = topMatch ? parseInt(topMatch[1], 10) : undefined;
-
-      // AI analysis (OpenAI first, then Gemini)
+      // --- 1) AI ANALYSIS ---
       let analysis: GeminiFilter;
       if (openaiKey) {
         analysis = await analyzeQueryWithOpenAI(raw, openaiKey);
@@ -83,32 +131,51 @@ export function useMediaSearch({
         analysis = await analyzeQuery(raw, geminiKey);
       }
 
+      const normalizedSearchType = analysis.searchType || 'general';
+      const targetLimitFromQuery = raw.match(/top\s+(\d+)/i);
+      const requestedLimit = targetLimitFromQuery
+        ? parseInt(targetLimitFromQuery[1], 10)
+        : undefined;
+
+      let targetLimit =
+        analysis.limit || requestedLimit || 20;
+      if (!targetLimit || Number.isNaN(targetLimit) || targetLimit <= 0) {
+        targetLimit = 20;
+      }
+      targetLimit = Math.min(targetLimit, 100);
+
       let searchResults: MediaItem[] = [];
       let explanationText =
         analysis.explanation || 'Results based on your search.';
 
-      // ----- Limit handling -----
-      let targetLimit = analysis.limit || requestedLimit || 20;
-      if (!targetLimit || Number.isNaN(targetLimit) || targetLimit <= 0) {
-        targetLimit = 20;
-      }
-      targetLimit = Math.min(targetLimit, 100); // safety cap
+      const rankingStyle = isRankingQuery(raw, analysis);
+      const mediaType = inferMediaType(analysis.media_type as any, raw);
 
-      // ---------- SEARCH TYPE HANDLING ----------
-      if (analysis.searchType === 'trending') {
-        // reuse our trending movies + tv if already loaded
+      // --- 2) HANDLE SEARCH TYPES ---
+
+      // A) TRENDING
+      if (normalizedSearchType === 'trending') {
         if (trendingMovies.length || trendingTv.length) {
-          searchResults = [...trendingMovies, ...trendingTv].slice(0, targetLimit);
+          searchResults = [...trendingMovies, ...trendingTv].slice(
+            0,
+            targetLimit
+          );
         } else {
           const combined = await tmdb.getTrending(tmdbKey);
           searchResults = combined.slice(0, targetLimit);
         }
-      } else if (analysis.searchType === 'episode_ranking' && analysis.query) {
-        // ----- TOP EPISODES FLOW -----
-        explanationText = `Finding top ranked episodes for "${analysis.query}"...`;
+      }
+
+      // B) EPISODE RANKING
+      else if (
+        normalizedSearchType === 'episode_ranking' &&
+        analysis.query
+      ) {
+        const title = analysis.query;
+        explanationText = `Finding top ranked episodes for "${title}"...`;
         setExplanation(explanationText);
 
-        const showId = await tmdb.findIdByName(tmdbKey, 'tv', analysis.query);
+        const showId = await tmdb.findIdByName(tmdbKey, 'tv', title);
         if (!showId) throw new Error('Could not find that TV show.');
 
         const seasons = await tmdb.getShowSeasons(tmdbKey, showId);
@@ -141,84 +208,77 @@ export function useMediaSearch({
           episode_number: ep.episode_number,
         })) as any;
 
-        explanationText = `Top ${searchResults.length} highest-rated episodes of ${analysis.query}.`;
-      } else {
-        // ----- GENERAL / TITLE / "TOP X ..." MOVIES & SHOWS -----
+        explanationText = `Top ${searchResults.length} highest-rated episodes of ${title}.`;
+      }
 
-        // --- Map genres safely, especially for TV ---
-        // TMDB TV genres do NOT include Horror (27) or Sci-Fi (878).
-        // We map them to Sci-Fi & Fantasy (10765) so queries like
-        // "top 10 horror series" / "top 10 sci fi series" still work.
-        let genres = analysis.genres ? [...analysis.genres] : [];
-
-        if (analysis.media_type === 'tv' && genres.length) {
-          genres = genres.map((id) => {
-            if (id === 878 || id === 14 || id === 27) {
-              // Sci-Fi, Fantasy, Horror -> Sci-Fi & Fantasy for TV
-              return 10765;
-            }
-            return id;
-          });
-          // dedupe
-          genres = Array.from(new Set(genres));
-        }
-
-        // ----- People filter -----
-        let personId: number | null = null;
-        if (analysis.with_people) {
-          personId = await tmdb.getPersonId(tmdbKey, analysis.with_people);
-        }
-
+      // C) GENERAL / MIXED QUERIES
+      else {
+        // --------- Build Discover params (only used when needed) ----------
         const params: any = {
-          sort_by: analysis.sort_by || 'popularity.desc',
-          ...(genres.length && {
-            with_genres: genres.join(','),
-          }),
-          ...(analysis.year && {
-            primary_release_year: analysis.year,
-            first_air_date_year: analysis.year,
-          }),
-          ...(personId && { with_people: personId }),
-          ...(analysis.language && {
-            with_original_language: analysis.language,
-          }),
+          sort_by: analysis.sort_by || (rankingStyle ? 'vote_average.desc' : 'popularity.desc'),
         };
 
-        // If user asked "top N" or sort_by is rating -> enforce min votes
-        if (
-          /top\s+\d+/i.test(raw) ||
-          (analysis.sort_by && analysis.sort_by.startsWith('vote_average'))
-        ) {
-          // TMDB discover filter: minimum vote count
+        if (analysis.genres && analysis.genres.length > 0) {
+          params.with_genres = analysis.genres.join(',');
+        }
+        if (analysis.year) {
+          params.primary_release_year = analysis.year;
+          params.first_air_date_year = analysis.year;
+        }
+        if (analysis.with_people) {
+          const personId = await tmdb.getPersonId(
+            tmdbKey,
+            analysis.with_people
+          );
+          if (personId) params.with_people = personId;
+        }
+        if (analysis.language) {
+          params.with_original_language = analysis.language;
+        }
+
+        // For ranking-style queries, enforce minimum vote count
+        if (rankingStyle) {
           params['vote_count.gte'] = analysis.minVotes || 300;
         }
 
-        if (analysis.media_type) {
-          // ----- DISCOVER for a specific type (movie or tv) -----
-          const page1 = await tmdb.discoverMedia(
+        const hasStructuredFilters =
+          !!params.with_genres ||
+          !!params.primary_release_year ||
+          !!params.first_air_date_year ||
+          !!params.with_people ||
+          !!params.with_original_language ||
+          rankingStyle;
+
+        const queryText = (analysis.query || raw).trim();
+
+        // CASE 1: Structured + known media type -> DISCOVER
+        if (hasStructuredFilters && mediaType) {
+          const discovered = await tmdb.discoverMedia(
             tmdbKey,
-            analysis.media_type,
+            mediaType,
             params
           );
-          searchResults = page1;
-        } else {
-          // ----- Plain title / generic search – trust the user text -----
-          const queryText = (analysis.query || raw).trim();
+          searchResults = discovered;
+          // Extra sort by rating for ranking queries
+          if (rankingStyle) {
+            searchResults = [...searchResults].sort(
+              (a, b) => (b.vote_average || 0) - (a.vote_average || 0)
+            );
+          }
+        }
+
+        // CASE 2: No strong structure => plain title / keyword search
+        else {
           const multi = await tmdb.searchMulti(tmdbKey, queryText);
           searchResults = multi;
+          // Local rating sort only if clearly ranking style
+          if (rankingStyle) {
+            searchResults = [...searchResults].sort(
+              (a, b) => (b.vote_average || 0) - (a.vote_average || 0)
+            );
+          }
         }
 
-        // sort by rating locally if requested
-        if (
-          analysis.sort_by &&
-          analysis.sort_by.startsWith('vote_average')
-        ) {
-          searchResults = [...searchResults].sort(
-            (a, b) => (b.vote_average || 0) - (a.vote_average || 0)
-          );
-        }
-
-        // respect targetLimit
         if (searchResults.length > targetLimit) {
           searchResults = searchResults.slice(0, targetLimit);
         }
@@ -227,15 +287,16 @@ export function useMediaSearch({
       setResults(searchResults);
       setExplanation(explanationText);
     } catch (e) {
-      console.error(e);
+      console.error('Search error:', e);
       setError(
-        'Sorry, I had trouble finding that. Try a simpler search or check your keys.'
+        'Sorry, I had trouble understanding that. Try a simpler wording or different filters.'
       );
     } finally {
       setIsSearching(false);
     }
   };
 
+  // ---------- SUGGESTION SELECTION ----------
   const selectSuggestion = (item: MediaItem) => {
     const title = item.title || item.name || '';
     setSearchQuery(title);
