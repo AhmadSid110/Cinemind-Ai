@@ -23,6 +23,7 @@ import * as tmdb from './services/tmdbService';
 import MediaCard from './components/MediaCard';
 import DetailView from './components/DetailView';
 import PersonView from './components/PersonView';
+import EpisodeDetailView from './components/EpisodeDetailView';
 import SettingsModal from './components/SettingsModal';
 import HorizontalCarousel from './components/HorizontalCarousel';
 
@@ -50,6 +51,7 @@ const App: React.FC = () => {
     view: 'trending',
     selectedItem: null,
     selectedPerson: null,
+    selectedEpisode: null,
     isLoading: false,
     error: null,
     favorites: JSON.parse(localStorage.getItem('favorites') || '[]'),
@@ -126,6 +128,7 @@ const App: React.FC = () => {
       view: 'trending',
       selectedItem: null,
       selectedPerson: null,
+      selectedEpisode: null,
       aiExplanation:
         "Here's what's hot right now across movies, series, in theatres and streaming.",
       error: null,
@@ -149,14 +152,47 @@ const App: React.FC = () => {
   };
 
   const handleCardClick = async (item: MediaItem) => {
+    // Episode card (from episode ranking)
     if ((item as any).season_number && (item as any).episode_number) {
-      alert(
-        `${item.name}\nSeason ${
-          (item as any).season_number
-        }, Episode ${
+      if (!tmdbKey) return;
+      setState((prev) => ({ ...prev, isLoading: true }));
+      try {
+        // You MUST know the parent show ID. If your Episode items already
+        // include `show_id`, use that. If not, add it where you map episodes.
+        const showId = (item as any).show_id || (item as any).tv_id;
+        if (!showId) {
+          // fallback: just show a simple popup
+          setState((prev) => ({ ...prev, isLoading: false }));
+          alert(
+            `${item.name}\nSeason ${(item as any).season_number}, Episode ${
+              (item as any).episode_number
+            }\nRating: ${item.vote_average?.toFixed(1) || 'N/A'}`
+          );
+          return;
+        }
+
+        const episodeDetails = await tmdb.getEpisodeDetails(
+          tmdbKey,
+          showId,
+          (item as any).season_number,
           (item as any).episode_number
-        }\nRating: ${item.vote_average?.toFixed(1)}\n\n${item.overview}`
-      );
+        );
+
+        setState((prev) => ({
+          ...prev,
+          selectedEpisode: episodeDetails,
+          selectedItem: null,
+          selectedPerson: null,
+          isLoading: false,
+        }));
+      } catch (err) {
+        console.error(err);
+        setState((prev) => ({
+          ...prev,
+          isLoading: false,
+          error: 'Could not load episode details.',
+        }));
+      }
       return;
     }
 
@@ -171,6 +207,7 @@ const App: React.FC = () => {
       setState((prev) => ({
         ...prev,
         selectedItem: details,
+        selectedEpisode: null,
         isLoading: false,
         selectedPerson: null,
       }));
@@ -629,6 +666,20 @@ const App: React.FC = () => {
             setState((prev) => ({ ...prev, selectedPerson: null }))
           }
           onMediaClick={handleCardClick}
+        />
+      )}
+
+      {state.selectedEpisode && (
+        <EpisodeDetailView
+          episode={state.selectedEpisode}
+          showTitle={state.selectedEpisode?.show_name}
+          onClose={() =>
+            setState((prev) => ({ ...prev, selectedEpisode: null }))
+          }
+          onRate={rateItem}
+          userRating={
+            state.userRatings[String(state.selectedEpisode.id)]
+          }
         />
       )}
 

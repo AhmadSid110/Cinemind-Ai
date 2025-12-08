@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, Play, Plus, Check, Star, Calendar, Clock, Users, Video, ChevronDown, MonitorPlay, Film, ExternalLink } from 'lucide-react';
-import { MediaDetail, MediaItem, Episode, CastMember, CrewMember } from '../types';
+import { MediaDetail, MediaItem, Episode, CastMember, CrewMember, Review } from '../types';
 import { getSeasonEpisodes } from '../services/tmdbService';
 import { generateEpisodeKey, generateMediaKey } from '../utils';
 import StarRating from './StarRating';
@@ -273,6 +273,45 @@ const DetailView: React.FC<DetailViewProps> = ({
                             </div>
                         ))}
                     </div>
+                </section>
+              )}
+
+              {/* TMDB Reviews Section */}
+              {item.reviews && item.reviews.results && item.reviews.results.length > 0 && (
+                <section className="mt-6 space-y-3">
+                  <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                    <span className="w-1 h-6 bg-amber-500 rounded-full shadow-[0_0_10px_#f59e0b]"></span>
+                    TMDB Reviews
+                  </h3>
+                  <div className="space-y-3 max-h-[32rem] overflow-y-auto pr-1">
+                    {item.reviews.results.map((rev) => (
+                      <div
+                        key={rev.id}
+                        className="p-4 rounded-xl bg-[#0f172a] border border-white/5 hover:border-amber-500/30 transition-all"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-slate-100">
+                            {rev.author || rev.author_details.username || 'User'}
+                          </span>
+                          {typeof rev.author_details?.rating === 'number' && (
+                            <span className="inline-flex items-center gap-1 text-sm text-amber-300">
+                              <Star
+                                size={14}
+                                className="fill-amber-400 text-amber-400"
+                              />
+                              {rev.author_details.rating.toFixed(1)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-300 line-clamp-6 leading-relaxed">
+                          {rev.content}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-2">
+                          {new Date(rev.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </section>
               )}
            </div>
