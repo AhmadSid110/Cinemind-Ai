@@ -1,4 +1,3 @@
-// src/services/geminiService.ts
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GeminiFilter } from "../types";
 
@@ -16,9 +15,10 @@ Rules:
 - "explanation": Short string.
 `;
 
-// Helper: Try a single key
 async function tryGenerate(apiKey: string, query: string): Promise<GeminiFilter> {
   const genAI = new GoogleGenerativeAI(apiKey);
+  // Using gemini-2.5-flash as it is the current standard.
+  // If this fails (unlikely), change to "gemini-1.5-flash".
   const model = genAI.getGenerativeModel({ 
     model: "gemini-2.5-flash", 
     systemInstruction: SYSTEM_PROMPT,
@@ -34,16 +34,10 @@ async function tryGenerate(apiKey: string, query: string): Promise<GeminiFilter>
   return JSON.parse(cleanText) as GeminiFilter;
 }
 
-// Main: Accepts ARRAY of keys
 export const analyzeQuery = async (userQuery: string, apiKeys: string[]): Promise<GeminiFilter> => {
-  // 1. Clean the keys
   const validKeys = apiKeys.filter(k => k && k.trim().length > 0);
+  if (validKeys.length === 0) throw new Error("No Gemini API Keys provided");
 
-  if (validKeys.length === 0) {
-    throw new Error("No Gemini API Keys provided");
-  }
-
-  // 2. Round Robin / Failover Loop
   let lastError;
   for (let i = 0; i < validKeys.length; i++) {
     const currentKey = validKeys[i];
@@ -53,12 +47,14 @@ export const analyzeQuery = async (userQuery: string, apiKeys: string[]): Promis
     } catch (error: any) {
       console.warn(`⚠️ Key #${i + 1} failed:`, error.message);
       lastError = error;
-      // If it's the last key, stop
       if (i === validKeys.length - 1) break;
     }
   }
 
   console.error("❌ All Gemini Keys failed.");
-  // Fallback
   return {
     searchType: 'general',
+    query: userQuery,
+    explanation: "I couldn't verify the specific filters (AI busy), so I'm doing a broad search."
+  };
+};
