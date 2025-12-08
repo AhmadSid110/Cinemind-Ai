@@ -41,6 +41,12 @@ export interface MediaDetail extends MediaItem {
     instagram_id?: string;
     twitter_id?: string;
   };
+  reviews?: {
+    results: Review[];
+    page: number;
+    total_pages: number;
+    total_results: number;
+  };
 }
 
 export interface PersonDetail {
@@ -66,6 +72,22 @@ export interface Season {
   poster_path: string;
 }
 
+export interface ReviewAuthorDetails {
+  name: string | null;
+  username: string | null;
+  avatar_path: string | null;
+  rating: number | null;
+}
+
+export interface Review {
+  id: string;
+  author: string;
+  author_details: ReviewAuthorDetails;
+  content: string;
+  created_at: string;
+  url: string;
+}
+
 export interface Episode {
   id: number;
   name: string;
@@ -77,6 +99,21 @@ export interface Episode {
   season_number: number;
   still_path: string | null;
   userRating?: number;
+}
+
+export interface EpisodeDetail extends Episode {
+  credits?: any;
+  external_ids?: any;
+  videos?: {
+    results: any[];
+  };
+  reviews?: {
+    results: Review[];
+    page: number;
+    total_pages: number;
+    total_results: number;
+  };
+  show_name?: string;
 }
 
 export interface CastMember {
@@ -117,6 +154,7 @@ export interface AppState {
   view: 'trending' | 'search' | 'detail' | 'library' | 'settings';
   selectedItem: MediaDetail | null;
   selectedPerson: PersonDetail | null;
+  selectedEpisode: EpisodeDetail | null;
   isLoading: boolean;
   error: string | null;
   favorites: MediaItem[];

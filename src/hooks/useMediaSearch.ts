@@ -206,6 +206,7 @@ export function useMediaSearch({
           media_type: 'tv',
           season_number: ep.season_number,
           episode_number: ep.episode_number,
+          show_id: showId,
         })) as any;
 
         explanationText = `Top ${searchResults.length} highest-rated episodes of ${title}.`;

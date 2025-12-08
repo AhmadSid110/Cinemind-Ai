@@ -1,5 +1,5 @@
 // src/services/tmdbService.ts
-import { MediaItem, MediaDetail, Episode, Season, PersonDetail } from '../types';
+import { MediaItem, MediaDetail, Episode, Season, PersonDetail, Review, EpisodeDetail } from '../types';
 
 const BASE_URL = 'https://api.themoviedb.org/3';
 
@@ -223,7 +223,7 @@ export const getDetails = async (
 ): Promise<MediaDetail> => {
   const res = await fetch(
     getUrl(`/${type}/${id}`, apiKey, {
-      append_to_response: 'credits,videos,recommendations,external_ids',
+      append_to_response: 'credits,videos,recommendations,external_ids,reviews',
     })
   );
   if (!res.ok) throw new Error('Failed to fetch details');
@@ -300,4 +300,27 @@ export const getPersonId = async (
     return data.results[0].id;
   }
   return null;
+};
+
+/**
+ * Full details for a specific TV episode.
+ */
+export const getEpisodeDetails = async (
+  apiKey: string,
+  showId: number,
+  seasonNumber: number,
+  episodeNumber: number
+): Promise<EpisodeDetail> => {
+  const res = await fetch(
+    getUrl(
+      `/tv/${showId}/season/${seasonNumber}/episode/${episodeNumber}`,
+      apiKey,
+      {
+        append_to_response: 'credits,external_ids,videos,reviews',
+      }
+    )
+  );
+  if (!res.ok) throw new Error('Failed to fetch episode details');
+  const data = await res.json();
+  return data as EpisodeDetail;
 };
