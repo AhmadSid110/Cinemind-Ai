@@ -15,10 +15,7 @@ interface UseMediaSearchProps {
 
 /**
  * Hook for media search functionality.
- * Handles:
- *  - plain title search (no AI)
- *  - natural language AI search (Gemini / OpenAI)
- *  - autocomplete suggestions
+ * Handles search query, autocomplete, AI analysis, and result fetching.
  */
 export function useMediaSearch({
   tmdbKey,
@@ -60,14 +57,13 @@ export function useMediaSearch({
 
   // ---------- SEARCH FUNCTION ----------
   const search = async () => {
-    const q = searchQuery.trim();
-    if (!q || !tmdbKey) return;
+    const raw = searchQuery.trim();
+    if (!raw || !tmdbKey) return;
 
-    // Heuristic: detect "plain title" queries and bypass AI completely.
-    // Plain title = does NOT contain intent words like "top", "best", "episodes", "series", etc.
-    const isPlainTitle = !/\b(top|best|worst|episode|episodes|season|seasons|series|show|shows|movie|movies|film|films|list|recommend|similar|like|tv)\b/i.test(
-      q
-    );
+    if (!geminiKey && !openaiKey) {
+      setError('Please add your Gemini or OpenAI API Key in settings to use AI Search.');
+      return;
+    }
 
     setIsSearching(true);
     setError(null);
@@ -75,66 +71,44 @@ export function useMediaSearch({
     setSuggestions([]); // hide autocomplete on submit
 
     try {
-      // ---------- PLAIN TITLE SEARCH (no AI) ----------
-      if (isPlainTitle) {
-        const multi = await tmdb.searchMulti(tmdbKey, q);
-        setResults(multi);
-        setExplanation(`Direct search results for "${q}".`);
-        return;
-      }
-
-      // ---------- AI-POWERED SEARCH ----------
-      if (!geminiKey && !openaiKey) {
-        setError(
-          'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
-        );
-        return;
-      }
-
       // detect "top N" from raw query (for limits)
-      const topMatch = q.match(/top\s+(\d+)/i);
+      const topMatch = raw.match(/top\s+(\d+)/i);
       const requestedLimit = topMatch ? parseInt(topMatch[1], 10) : undefined;
 
       // AI analysis (OpenAI first, then Gemini)
       let analysis: GeminiFilter;
       if (openaiKey) {
-        analysis = await analyzeQueryWithOpenAI(q, openaiKey);
+        analysis = await analyzeQueryWithOpenAI(raw, openaiKey);
       } else {
-        analysis = await analyzeQuery(q, geminiKey);
+        analysis = await analyzeQuery(raw, geminiKey);
       }
 
       let searchResults: MediaItem[] = [];
       let explanationText =
         analysis.explanation || 'Results based on your search.';
 
+      // ----- Limit handling -----
       let targetLimit = analysis.limit || requestedLimit || 20;
       if (!targetLimit || Number.isNaN(targetLimit) || targetLimit <= 0) {
         targetLimit = 20;
       }
       targetLimit = Math.min(targetLimit, 100); // safety cap
 
-      // ---------- SEARCH TYPE: TRENDING ----------
+      // ---------- SEARCH TYPE HANDLING ----------
       if (analysis.searchType === 'trending') {
+        // reuse our trending movies + tv if already loaded
         if (trendingMovies.length || trendingTv.length) {
-          searchResults = [...trendingMovies, ...trendingTv].slice(
-            0,
-            targetLimit
-          );
+          searchResults = [...trendingMovies, ...trendingTv].slice(0, targetLimit);
         } else {
           const combined = await tmdb.getTrending(tmdbKey);
           searchResults = combined.slice(0, targetLimit);
         }
-      }
-      // ---------- SEARCH TYPE: EPISODE RANKING ----------
-      else if (analysis.searchType === 'episode_ranking' && analysis.query) {
+      } else if (analysis.searchType === 'episode_ranking' && analysis.query) {
+        // ----- TOP EPISODES FLOW -----
         explanationText = `Finding top ranked episodes for "${analysis.query}"...`;
         setExplanation(explanationText);
 
-        const showId = await tmdb.findIdByName(
-          tmdbKey,
-          'tv',
-          analysis.query
-        );
+        const showId = await tmdb.findIdByName(tmdbKey, 'tv', analysis.query);
         if (!showId) throw new Error('Could not find that TV show.');
 
         const seasons = await tmdb.getShowSeasons(tmdbKey, showId);
@@ -168,18 +142,37 @@ export function useMediaSearch({
         })) as any;
 
         explanationText = `Top ${searchResults.length} highest-rated episodes of ${analysis.query}.`;
-      }
-      // ---------- GENERAL / "TOP N ..." / GENRE QUERIES ----------
-      else {
-        let personId = null;
+      } else {
+        // ----- GENERAL / TITLE / "TOP X ..." MOVIES & SHOWS -----
+
+        // --- Map genres safely, especially for TV ---
+        // TMDB TV genres do NOT include Horror (27) or Sci-Fi (878).
+        // We map them to Sci-Fi & Fantasy (10765) so queries like
+        // "top 10 horror series" / "top 10 sci fi series" still work.
+        let genres = analysis.genres ? [...analysis.genres] : [];
+
+        if (analysis.media_type === 'tv' && genres.length) {
+          genres = genres.map((id) => {
+            if (id === 878 || id === 14 || id === 27) {
+              // Sci-Fi, Fantasy, Horror -> Sci-Fi & Fantasy for TV
+              return 10765;
+            }
+            return id;
+          });
+          // dedupe
+          genres = Array.from(new Set(genres));
+        }
+
+        // ----- People filter -----
+        let personId: number | null = null;
         if (analysis.with_people) {
           personId = await tmdb.getPersonId(tmdbKey, analysis.with_people);
         }
 
         const params: any = {
           sort_by: analysis.sort_by || 'popularity.desc',
-          ...(analysis.genres && {
-            with_genres: analysis.genres.join(','),
+          ...(genres.length && {
+            with_genres: genres.join(','),
           }),
           ...(analysis.year && {
             primary_release_year: analysis.year,
@@ -193,14 +186,15 @@ export function useMediaSearch({
 
         // If user asked "top N" or sort_by is rating -> enforce min votes
         if (
-          /top\s+\d+/i.test(q) ||
+          /top\s+\d+/i.test(raw) ||
           (analysis.sort_by && analysis.sort_by.startsWith('vote_average'))
         ) {
+          // TMDB discover filter: minimum vote count
           params['vote_count.gte'] = analysis.minVotes || 300;
         }
 
         if (analysis.media_type) {
-          // discover for a specific type – handles "top 10 horror series", etc.
+          // ----- DISCOVER for a specific type (movie or tv) -----
           const page1 = await tmdb.discoverMedia(
             tmdbKey,
             analysis.media_type,
@@ -208,8 +202,8 @@ export function useMediaSearch({
           );
           searchResults = page1;
         } else {
-          // Fallback: generic multi search using user's text (for weird AI outputs)
-          const queryText = (analysis.query || q).trim();
+          // ----- Plain title / generic search – trust the user text -----
+          const queryText = (analysis.query || raw).trim();
           const multi = await tmdb.searchMulti(tmdbKey, queryText);
           searchResults = multi;
         }
@@ -224,6 +218,7 @@ export function useMediaSearch({
           );
         }
 
+        // respect targetLimit
         if (searchResults.length > targetLimit) {
           searchResults = searchResults.slice(0, targetLimit);
         }
