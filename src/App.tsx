@@ -1,7 +1,7 @@
 // src/App.tsx
 import React, { useState, useEffect } from 'react';
 import {
-  Home, Library, Settings, Sparkles, Loader2, Video, Heart, List, Film, Tv, PlayCircle, LogIn, LogOut, UserCircle, Star,
+  Home, Library, Settings, Sparkles, Loader2, Video, LogIn, LogOut,
 } from 'lucide-react';
 
 import { MediaItem, AppState } from './types';
@@ -10,10 +10,7 @@ import MediaCard from './components/MediaCard';
 import DetailView from './components/DetailView';
 import PersonView from './components/PersonView';
 import SettingsModal from './components/SettingsModal';
-
-// Hooks
 import { useMediaSearch } from './hooks/useMediaSearch';
-// Auth
 import { auth, loginWithGoogle, subscribeToAuthChanges, loadUserData, saveUserData } from './firebase';
 
 const App: React.FC = () => {
@@ -22,13 +19,12 @@ const App: React.FC = () => {
     view: 'trending',
     tmdbKey: localStorage.getItem('tmdb_key') || '',
     
-    // Initialize Array of Keys
+    // Multi-Key Support (Array)
     geminiKeys: (() => {
         try {
             const list = JSON.parse(localStorage.getItem('gemini_keys_list') || '[]');
             if (Array.isArray(list) && list.length > 0) return list;
         } catch (e) {}
-        // Fallback to old single key if migrating
         const old = localStorage.getItem('gemini_key');
         return old ? [old] : [];
     })(),
@@ -48,13 +44,13 @@ const App: React.FC = () => {
   const [libraryTab, setLibraryTab] = useState<'favorites' | 'watchlist'>('favorites');
   const [libraryFilter, setLibraryFilter] = useState<'all' | 'movie' | 'tv' | 'animation'>('all');
 
-  // ---------- HOME DATA (Trending) ----------
+  // ---------- TRENDING DATA ----------
   const [trendingMovies, setTrendingMovies] = useState<MediaItem[]>([]);
   const [trendingTv, setTrendingTv] = useState<MediaItem[]>([]);
   const [nowPlayingMovies, setNowPlayingMovies] = useState<MediaItem[]>([]);
   const [onAirTv, setOnAirTv] = useState<MediaItem[]>([]);
 
-  // ---------- SEARCH HOOK (The New Brain) ----------
+  // ---------- SEARCH HOOK ----------
   const searchHook = useMediaSearch({
     tmdbKey: state.tmdbKey,
     geminiKeys: state.geminiKeys || [], 
@@ -62,7 +58,7 @@ const App: React.FC = () => {
     trendingTv
   });
 
-  // Sync Hook Results to App View
+  // Sync Search Results to View
   useEffect(() => {
     if (searchHook.results.length > 0 || searchHook.explanation) {
        setState(prev => ({ 
@@ -75,9 +71,8 @@ const App: React.FC = () => {
     }
   }, [searchHook.results, searchHook.explanation]);
 
-  // ---------- FIREBASE AUTH & SYNC ----------
+  // ---------- FIREBASE ----------
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
   const [hasLoadedCloud, setHasLoadedCloud] = useState(false);
 
   useEffect(() => {
@@ -86,38 +81,33 @@ const App: React.FC = () => {
     localStorage.setItem('userRatings', JSON.stringify(state.userRatings));
   }, [state.favorites, state.watchlist, state.userRatings]);
 
-  // Load Trending Data
   useEffect(() => {
     if (state.tmdbKey) loadHomeSections();
   }, [state.tmdbKey]);
 
-  // Auth Subscription
   useEffect(() => {
     const unsub = subscribeToAuthChanges(async (user) => {
       setCurrentUser(user);
       setHasLoadedCloud(false);
       if (!user) return;
       try {
-        setIsSyncingCloud(true);
         const cloud = await loadUserData(user.uid);
         if (cloud) {
-          // Merge logic
           setState(prev => ({
             ...prev,
             favorites: cloud.favorites || [],
             watchlist: cloud.watchlist || [],
             tmdbKey: cloud.tmdbKey || prev.tmdbKey,
-            geminiKeys: cloud.geminiKeys || prev.geminiKeys, // Sync Keys
+            geminiKeys: cloud.geminiKeys || prev.geminiKeys,
             userRatings: cloud.userRatings || {},
           }));
         }
       } catch (err) { console.error(err); } 
-      finally { setIsSyncingCloud(false); setHasLoadedCloud(true); }
+      finally { setHasLoadedCloud(true); }
     });
     return () => unsub();
   }, []);
 
-  // Save to Cloud
   useEffect(() => {
     if (!currentUser || !hasLoadedCloud) return;
     const sync = async () => {
@@ -126,16 +116,25 @@ const App: React.FC = () => {
                 favorites: state.favorites,
                 watchlist: state.watchlist,
                 tmdbKey: state.tmdbKey,
-                geminiKeys: state.geminiKeys, // Save array
+                geminiKeys: state.geminiKeys,
                 userRatings: state.userRatings,
             });
         } catch (e) { console.error(e); }
     };
-    const timer = setTimeout(sync, 2000); // Debounce
+    const timer = setTimeout(sync, 2000);
     return () => clearTimeout(timer);
   }, [currentUser, hasLoadedCloud, state]);
 
   // ---------- ACTIONS ----------
+  const handleLogin = async () => {
+    try {
+      await loginWithGoogle();
+    } catch (err) {
+      console.error("Login failed", err);
+      alert("Login failed. Check console.");
+    }
+  };
+
   const loadHomeSections = async () => {
     if (!state.tmdbKey) return;
     setState(prev => ({ ...prev, isLoading: true, view: 'trending' }));
@@ -155,7 +154,7 @@ const App: React.FC = () => {
 
   const onSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    searchHook.search(); // Delegate to Hook
+    searchHook.search();
   };
 
   const handleCardClick = async (item: MediaItem) => {
@@ -165,13 +164,6 @@ const App: React.FC = () => {
         const details = await tmdb.getDetails(state.tmdbKey, item.media_type as 'movie' | 'tv', item.id);
         setState(prev => ({ ...prev, selectedItem: details, isLoading: false }));
     } catch (e) { setState(prev => ({ ...prev, isLoading: false })); }
-  };
-
-  const handleCastClick = async (personId: number) => {
-     try {
-         const p = await tmdb.getPersonDetails(state.tmdbKey, personId);
-         setState(prev => ({ ...prev, selectedPerson: p }));
-     } catch (e) {}
   };
 
   const toggleList = (type: 'favorites' | 'watchlist', item: MediaItem) => {
@@ -212,7 +204,6 @@ const App: React.FC = () => {
             />
             {searchHook.isSearching && <div className="absolute inset-y-0 right-4 flex items-center"><Loader2 className="animate-spin text-cyan-500" size={20} /></div>}
             
-            {/* Autocomplete Dropdown */}
             {searchHook.suggestions.length > 0 && (
                 <div className="absolute mt-2 left-0 right-0 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50">
                     {searchHook.suggestions.map((s, i) => (
@@ -229,7 +220,7 @@ const App: React.FC = () => {
             {currentUser ? (
                  <button onClick={() => auth.signOut()} className="p-2 bg-slate-800 rounded-xl"><LogOut size={20} /></button>
             ) : (
-                 <button onClick={loginWithGoogle} className="p-2 bg-slate-800 rounded-xl"><LogIn size={20} /></button>
+                 <button onClick={handleLogin} className="p-2 bg-slate-800 rounded-xl"><LogIn size={20} /></button>
             )}
             <button onClick={() => setIsSettingsOpen(true)} className="p-3 text-slate-400 hover:text-white rounded-xl border border-transparent hover:border-white/10"><Settings size={22} /></button>
           </div>
@@ -237,7 +228,6 @@ const App: React.FC = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-10">
-        {/* AI Banner */}
         {state.aiExplanation && (
           <div className="mb-10 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 border border-cyan-500/20 p-5 rounded-2xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4">
             <div className="p-2 bg-cyan-500/10 rounded-lg"><Sparkles className="text-cyan-400" size={20} /></div>
@@ -254,8 +244,6 @@ const App: React.FC = () => {
                       <button onClick={() => setLibraryTab('watchlist')} className={`px-4 py-2 rounded-lg text-sm font-bold ${libraryTab === 'watchlist' ? 'bg-slate-800 text-white' : 'text-slate-400'}`}>Watchlist</button>
                   </div>
               </div>
-              
-              {/* Filters Row */}
               <div className="flex gap-3 pb-4">
                   {['all', 'movie', 'tv'].map(f => (
                       <button key={f} onClick={() => setLibraryFilter(f as any)} className={`px-4 py-2 rounded-full text-sm font-bold border ${libraryFilter === f ? 'bg-cyan-600 border-cyan-500 text-white' : 'bg-slate-900 border-slate-700 text-slate-400'}`}>
@@ -263,7 +251,6 @@ const App: React.FC = () => {
                       </button>
                   ))}
               </div>
-
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
                   {getFilteredLibrary().map(item => (
                       <MediaCard key={item.id} item={item} onClick={handleCardClick} />
@@ -293,7 +280,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Mobile Nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-[#020617]/90 backdrop-blur-xl border-t border-white/5 z-40 pb-safe">
          <div className="flex justify-around p-4">
             <button onClick={loadHomeSections} className={`flex flex-col items-center gap-1 ${state.view === 'trending' ? 'text-cyan-400' : 'text-slate-500'}`}><Home size={24}/><span className="text-[10px] font-bold">HOME</span></button>
@@ -301,8 +287,7 @@ const App: React.FC = () => {
          </div>
       </nav>
 
-      {/* Modals */}
-      {state.selectedItem && <DetailView item={state.selectedItem} onClose={() => setState(p => ({...p, selectedItem: null}))} apiKey={state.tmdbKey} onToggleFavorite={i => toggleList('favorites', i)} onToggleWatchlist={i => toggleList('watchlist', i)} isFavorite={state.favorites.some(f => f.id === state.selectedItem?.id)} isWatchlist={state.watchlist.some(w => w.id === state.selectedItem?.id)} onCastClick={handleCastClick} userRatings={state.userRatings} onRate={(id, r) => setState(p => ({...p, userRatings: {...p.userRatings, [id]: r}}))} />}
+      {state.selectedItem && <DetailView item={state.selectedItem} onClose={() => setState(p => ({...p, selectedItem: null}))} apiKey={state.tmdbKey} onToggleFavorite={i => toggleList('favorites', i)} onToggleWatchlist={i => toggleList('watchlist', i)} isFavorite={state.favorites.some(f => f.id === state.selectedItem?.id)} isWatchlist={state.watchlist.some(w => w.id === state.selectedItem?.id)} onCastClick={() => {}} userRatings={state.userRatings} onRate={(id, r) => setState(p => ({...p, userRatings: {...p.userRatings, [id]: r}}))} />}
       {state.selectedPerson && <PersonView person={state.selectedPerson} onClose={() => setState(p => ({...p, selectedPerson: null}))} onMediaClick={handleCardClick} />}
       
       <SettingsModal 
