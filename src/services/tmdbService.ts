@@ -1,5 +1,5 @@
 // src/services/tmdbService.ts
-import { MediaItem, MediaDetail, Episode, Season, PersonDetail, Review } from '../types';
+import { MediaItem, MediaDetail, Episode, Season, PersonDetail, Review, EpisodeDetail } from '../types';
 
 const BASE_URL = 'https://api.themoviedb.org/3';
 
@@ -301,21 +301,6 @@ export const getPersonId = async (
   }
   return null;
 };
-
-export interface EpisodeDetail extends Episode {
-  credits?: any;
-  external_ids?: any;
-  videos?: {
-    results: any[];
-  };
-  reviews?: {
-    results: Review[];
-    page: number;
-    total_pages: number;
-    total_results: number;
-  };
-  show_name?: string;
-}
 
 /**
  * Full details for a specific TV episode.

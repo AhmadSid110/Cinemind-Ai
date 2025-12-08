@@ -101,6 +101,21 @@ export interface Episode {
   userRating?: number;
 }
 
+export interface EpisodeDetail extends Episode {
+  credits?: any;
+  external_ids?: any;
+  videos?: {
+    results: any[];
+  };
+  reviews?: {
+    results: Review[];
+    page: number;
+    total_pages: number;
+    total_results: number;
+  };
+  show_name?: string;
+}
+
 export interface CastMember {
   id: number;
   name: string;
@@ -139,7 +154,7 @@ export interface AppState {
   view: 'trending' | 'search' | 'detail' | 'library' | 'settings';
   selectedItem: MediaDetail | null;
   selectedPerson: PersonDetail | null;
-  selectedEpisode: any | null; // Will be EpisodeDetail from tmdbService
+  selectedEpisode: EpisodeDetail | null;
   isLoading: boolean;
   error: string | null;
   favorites: MediaItem[];

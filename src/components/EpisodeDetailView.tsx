@@ -1,7 +1,6 @@
 import React from 'react';
 import { X, Star, Calendar, Tv } from 'lucide-react';
-import { EpisodeDetail } from '../services/tmdbService';
-import { Review } from '../types';
+import { EpisodeDetail, Review } from '../types';
 
 interface EpisodeDetailViewProps {
   episode: EpisodeDetail;
@@ -23,7 +22,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
     : 'N/A';
 
   const reviews: Review[] =
-    (episode.reviews as any)?.results || [];
+    episode.reviews?.results || [];
 
   const tmdbRating =
     typeof episode.vote_average === 'number'
