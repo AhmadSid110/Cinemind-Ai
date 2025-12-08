@@ -1,43 +1,59 @@
 // src/hooks/useMediaSearch.ts
 import { useState, useEffect } from 'react';
-import { MediaItem, GeminiFilter } from '../types';
+import { MediaItem, Episode, GeminiFilter } from '../types';
 import * as tmdb from '../services/tmdbService';
 import { analyzeQuery } from '../services/geminiService';
-
-const GENRE_MAP_MOVIE_TO_TV: Record<number, number> = {
-  28: 10759,    // Action -> Action & Adventure
-  12: 10759,    // Adventure -> Action & Adventure
-  878: 10765,   // Sci-Fi -> Sci-Fi & Fantasy
-  14: 10765,    // Fantasy -> Sci-Fi & Fantasy
-  10752: 10768, // War -> War & Politics
-};
-
-function mapGenresToTV(movieGenreIds: number[]): number[] {
-  return movieGenreIds
-    .map((id) => GENRE_MAP_MOVIE_TO_TV[id] || (
-      [16, 35, 80, 99, 18, 10751, 9648, 37].includes(id) ? id : null
-    ))
-    .filter((id) => id !== null) as number[];
-}
+import { analyzeQueryWithOpenAI } from '../services/openaiService';
 
 interface UseMediaSearchProps {
   tmdbKey: string;
-  geminiKeys: string[]; 
+  geminiKey: string;
+  openaiKey: string;
   trendingMovies: MediaItem[];
   trendingTv: MediaItem[];
 }
 
-function normalizeMediaType(raw?: string | null): 'movie' | 'tv' | undefined {
+/** Normalize whatever the LLM sends into TMDB's media types */
+const normalizeMediaType = (
+  raw?: string | null
+): 'movie' | 'tv' | undefined => {
   if (!raw) return undefined;
-  const mt = raw.toLowerCase().trim();
-  if (['movie', 'movies', 'film', 'films'].includes(mt)) return 'movie';
-  if (['tv', 'tv_show', 'tv_shows', 'series', 'show', 'shows'].includes(mt)) return 'tv';
+  const t = raw.toLowerCase();
+  if (t.includes('movie') || t.includes('film')) return 'movie';
+  if (t.includes('tv') || t.includes('series') || t.includes('show')) {
+    return 'tv';
+  }
   return undefined;
-}
+};
 
+/** Choose one Gemini key (supports 1–3 comma-separated keys in the field) */
+const pickGeminiKey = (rawKey: string): string | null => {
+  if (!rawKey) return null;
+  const parts = rawKey
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) return null;
+  if (parts.length === 1) return parts[0];
+
+  // simple round-robin using localStorage index
+  const currentIndex = Number(
+    window.localStorage.getItem('gemini_key_index') || '0'
+  );
+  const nextIndex = (currentIndex + 1) % parts.length;
+  window.localStorage.setItem('gemini_key_index', String(nextIndex));
+  return parts[nextIndex];
+};
+
+/**
+ * Hook for media search functionality.
+ * Handles search query, autocomplete, AI analysis, and result fetching.
+ */
 export function useMediaSearch({
   tmdbKey,
-  geminiKeys,
+  geminiKey,
+  openaiKey,
   trendingMovies,
   trendingTv,
 }: UseMediaSearchProps) {
@@ -49,110 +65,224 @@ export function useMediaSearch({
   const [isSuggestLoading, setIsSuggestLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ---------- AUTOCOMPLETE EFFECT ----------
   useEffect(() => {
     const q = searchQuery.trim();
-    if (!tmdbKey || !q) { setSuggestions([]); return; }
+    if (!tmdbKey || !q) {
+      setSuggestions([]);
+      return;
+    }
+
     const handle = setTimeout(async () => {
       try {
         setIsSuggestLoading(true);
         const sug = await tmdb.getAutocompleteSuggestions(tmdbKey, q, 8);
         setSuggestions(sug);
-      } catch (e) { console.warn(e); } finally { setIsSuggestLoading(false); }
+      } catch (e) {
+        console.error('Autocomplete error:', e);
+      } finally {
+        setIsSuggestLoading(false);
+      }
     }, 300);
+
     return () => clearTimeout(handle);
   }, [searchQuery, tmdbKey]);
 
+  // ---------- SEARCH FUNCTION ----------
   const search = async () => {
-    const trimmed = searchQuery.trim();
-    if (!trimmed || !tmdbKey) return;
+    if (!searchQuery.trim() || !tmdbKey) return;
+
+    if (!geminiKey && !openaiKey) {
+      setError(
+        'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
+      );
+      return;
+    }
 
     setIsSearching(true);
-    setResults([]); 
-    setExplanation(null);
     setError(null);
+    setExplanation(null);
+    setSuggestions([]); // hide autocomplete on submit
 
     try {
-      if (!geminiKeys || geminiKeys.length === 0) {
-        await performBasicSearch(trimmed);
-        return;
+      // detect "top N" from raw query (for limits)
+      const topMatch = searchQuery.match(/top\s+(\d+)/i);
+      const requestedLimit = topMatch ? parseInt(topMatch[1], 10) : undefined;
+
+      // --- AI analysis (OpenAI first, then Gemini) ---
+      let analysis: GeminiFilter;
+      if (openaiKey) {
+        analysis = await analyzeQueryWithOpenAI(searchQuery, openaiKey);
+      } else {
+        const keyToUse = pickGeminiKey(geminiKey);
+        if (!keyToUse) {
+          throw new Error('No valid Gemini API key available');
+        }
+        analysis = await analyzeQuery(searchQuery, keyToUse);
       }
 
-      // Pass Array of Keys
-      const analysis = await analyzeQuery(trimmed, geminiKeys);
-      const normalizedMediaType = normalizeMediaType((analysis as any).media_type);
-      
-      const topMatch = trimmed.match(/top\s+(\d+)/i);
-      let targetLimit = analysis.limit || (topMatch ? parseInt(topMatch[1], 10) : 20);
-      targetLimit = Math.min(Math.max(targetLimit, 1), 50);
+      // normalize media_type so "tv shows", "series", etc. work
+      const normalizedMediaType = normalizeMediaType(
+        (analysis as any).media_type
+      );
+      (analysis as any).media_type = normalizedMediaType;
+
+      let searchResults: MediaItem[] = [];
+      let explanationText =
+        analysis.explanation || 'Results based on your search.';
+
+      let targetLimit = analysis.limit || requestedLimit || 20;
+      if (!targetLimit || Number.isNaN(targetLimit) || targetLimit <= 0) {
+        targetLimit = 20;
+      }
+      targetLimit = Math.min(targetLimit, 100); // safety cap
 
       if (analysis.searchType === 'trending') {
-        let items = [...trendingMovies, ...trendingTv];
-        if (items.length === 0) items = await tmdb.getTrending(tmdbKey);
-        setResults(items.slice(0, targetLimit));
-        setExplanation(analysis.explanation || 'Trending content.');
-        setIsSearching(false);
-        return;
-      }
+        // reuse our trending movies + tv if already loaded
+        if (trendingMovies.length || trendingTv.length) {
+          searchResults = [...trendingMovies, ...trendingTv].slice(
+            0,
+            targetLimit
+          );
+        } else {
+          const combined = await tmdb.getTrending(tmdbKey);
+          searchResults = combined.slice(0, targetLimit);
+        }
+      } else if (analysis.searchType === 'episode_ranking' && analysis.query) {
+        explanationText = `Finding top ranked episodes for "${analysis.query}"...`;
+        setExplanation(explanationText);
 
-      let finalGenres = analysis.genres || [];
-      let validFilterSearch = true;
+        const showId = await tmdb.findIdByName(
+          tmdbKey,
+          'tv',
+          analysis.query
+        );
+        if (!showId) throw new Error('Could not find that TV show.');
 
-      // Horror TV Fix
-      if (normalizedMediaType === 'tv' && finalGenres.length > 0) {
-        const originalCount = finalGenres.length;
-        finalGenres = mapGenresToTV(finalGenres);
-        if (finalGenres.length === 0 && originalCount > 0) {
-            console.log("Genres invalid for TV. Switching to text search.");
-            validFilterSearch = false; 
+        const seasons = await tmdb.getShowSeasons(tmdbKey, showId);
+
+        const fetchPromises = seasons
+          .filter((s) => s.season_number > 0)
+          .slice(0, 15)
+          .map((s) =>
+            tmdb.getSeasonEpisodes(tmdbKey, showId, s.season_number)
+          );
+
+        const seasonsEpisodes = await Promise.all(fetchPromises);
+        const allEpisodes: Episode[] = seasonsEpisodes.flat();
+
+        const sorted = allEpisodes.sort(
+          (a, b) => b.vote_average - a.vote_average
+        );
+
+        searchResults = sorted.slice(0, targetLimit).map((ep) => ({
+          id: ep.id,
+          name: ep.name,
+          poster_path: null,
+          still_path: ep.still_path,
+          backdrop_path: ep.still_path,
+          overview: ep.overview,
+          vote_average: ep.vote_average,
+          air_date: ep.air_date,
+          media_type: 'tv',
+          season_number: ep.season_number,
+          episode_number: ep.episode_number,
+        })) as any;
+
+        explanationText = `Top ${searchResults.length} highest-rated episodes of ${analysis.query}.`;
+      } else {
+        // ---- General movies & series search (incl. "top 10 horror tv") ----
+        let personId = null;
+        if (analysis.with_people) {
+          personId = await tmdb.getPersonId(
+            tmdbKey,
+            analysis.with_people
+          );
+        }
+
+        const params: any = {
+          sort_by: analysis.sort_by || 'popularity.desc',
+          ...(analysis.genres && {
+            with_genres: analysis.genres.join(','),
+          }),
+          ...(analysis.year && {
+            primary_release_year: analysis.year,
+            first_air_date_year: analysis.year,
+          }),
+          ...(personId && { with_people: personId }),
+          ...(analysis.language && {
+            with_original_language: analysis.language,
+          }),
+        };
+
+        // If user asked "top N" or sort_by is rating -> enforce min votes
+        if (
+          /top\s+\d+/i.test(searchQuery) ||
+          (analysis.sort_by && analysis.sort_by.startsWith('vote_average'))
+        ) {
+          params['vote_count.gte'] = analysis.minVotes || 300;
+        }
+
+        if (normalizedMediaType) {
+          // discover for a specific type (movie or tv)
+          const page1 = await tmdb.discoverMedia(
+            tmdbKey,
+            normalizedMediaType,
+            params
+          );
+          searchResults = page1;
+        } else {
+          // Plain title / generic search – trust the user's text more
+          const queryText = (analysis.query || searchQuery).trim();
+          const multi = await tmdb.searchMulti(tmdbKey, queryText);
+          searchResults = multi;
+        }
+
+        // sort by rating locally if requested
+        if (
+          analysis.sort_by &&
+          analysis.sort_by.startsWith('vote_average')
+        ) {
+          searchResults = [...searchResults].sort(
+            (a, b) => (b.vote_average || 0) - (a.vote_average || 0)
+          );
+        }
+
+        if (searchResults.length > targetLimit) {
+          searchResults = searchResults.slice(0, targetLimit);
         }
       }
 
-      let fetchedResults: MediaItem[] = [];
-      const hasFilters = finalGenres.length > 0 || analysis.year || analysis.with_people || analysis.sort_by;
-
-      if (validFilterSearch && hasFilters && normalizedMediaType) {
-        fetchedResults = await tmdb.discoverMedia(tmdbKey, normalizedMediaType, {
-            sort_by: analysis.sort_by || 'popularity.desc',
-            'vote_count.gte': 200,
-            with_genres: finalGenres.join(','),
-            first_air_date_year: analysis.year,
-            primary_release_year: analysis.year,
-            with_people: analysis.with_people ? await tmdb.getPersonId(tmdbKey, analysis.with_people) : null,
-            with_original_language: analysis.language,
-        });
-      }
-
-      if (fetchedResults.length === 0) {
-        console.log("Using text search fallback.");
-        const queryText = analysis.query || trimmed;
-        fetchedResults = await tmdb.searchMulti(tmdbKey, queryText);
-      }
-
-      if (analysis.sort_by === 'vote_average.desc') {
-        fetchedResults.sort((a, b) => (b.vote_average || 0) - (a.vote_average || 0));
-      }
-      setResults(fetchedResults.slice(0, targetLimit));
-      setExplanation(analysis.explanation || 'Here is what I found.');
-
+      setResults(searchResults);
+      setExplanation(explanationText);
     } catch (e) {
       console.error(e);
-      await performBasicSearch(trimmed);
-      setExplanation("Standard search results.");
+      setError(
+        'Sorry, I had trouble finding that. Try a simpler search or check your keys.'
+      );
     } finally {
       setIsSearching(false);
     }
   };
 
-  const performBasicSearch = async (q: string) => {
-    const res = await tmdb.searchMulti(tmdbKey, q);
-    setResults(res);
-  };
-
   const selectSuggestion = (item: MediaItem) => {
-    setSearchQuery(item.title || item.name || '');
+    const title = item.title || item.name || '';
+    setSearchQuery(title);
     setResults([item]);
+    setExplanation(null);
     setSuggestions([]);
   };
 
-  return { searchQuery, setSearchQuery, results, explanation, suggestions, isSearching, isSuggestLoading, error, search, selectSuggestion };
+  return {
+    searchQuery,
+    setSearchQuery,
+    results,
+    explanation,
+    suggestions,
+    isSearching,
+    isSuggestLoading,
+    error,
+    search,
+    selectSuggestion,
+  };
 }
