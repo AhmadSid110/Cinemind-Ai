@@ -89,8 +89,6 @@ const App: React.FC = () => {
     trendingTv,
     inTheaters: nowPlayingMovies,
     streamingNow: onAirTv,
-    loading: homeFeedLoading,
-    error: homeFeedError,
   } = useHomeFeed(tmdbKey);
 
   // ---------- MEDIA SEARCH ----------
@@ -120,15 +118,6 @@ const App: React.FC = () => {
     localStorage.setItem('userRatings', JSON.stringify(state.userRatings));
   }, [state.favorites, state.watchlist, state.userRatings]);
 
-  // Keep App's aiExplanation & error in sync with search hook
-  useEffect(() => {
-    setState((prev) => ({
-      ...prev,
-      aiExplanation: searchExplanation,
-      error: searchError,
-    }));
-  }, [searchExplanation, searchError]);
-
   // ---------- ACTIONS ----------
 
   const goToHome = () => {
@@ -145,21 +134,17 @@ const App: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!geminiKey && !openaiKey) {
-      alert(
-        'Please add your Gemini or OpenAI API Key in settings to use AI Search.'
-      );
-      setIsSettingsOpen(true);
-      return;
-    }
 
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
     await search();
 
+    // Read latest explanation / error from hook after search
     setState((prev) => ({
       ...prev,
       view: 'search',
       isLoading: false,
+      aiExplanation: searchExplanation,
+      error: searchError,
     }));
   };
 
@@ -199,7 +184,6 @@ const App: React.FC = () => {
   };
 
   const handleCastClick = async (personId: number) => {
-    if (!tmdbKey) return;
     setState((prev) => ({
       ...prev,
       isLoading: true,
@@ -246,6 +230,7 @@ const App: React.FC = () => {
       ...prev,
       view: 'search',
       aiExplanation: null,
+      error: null,
     }));
   };
 
@@ -325,9 +310,7 @@ const App: React.FC = () => {
                   const title = sug.title || sug.name;
                   const date =
                     sug.release_date || sug.first_air_date || '';
-                  const year = date
-                    ? new Date(date).getFullYear()
-                    : '';
+                  const year = date ? new Date(date).getFullYear() : '';
                   return (
                     <button
                       key={`${sug.id}-${idx}`}
@@ -475,7 +458,9 @@ const App: React.FC = () => {
                   <List
                     size={16}
                     className={
-                      libraryTab === 'watchlist' ? 'text-emerald-500' : ''
+                      libraryTab === 'watchlist'
+                        ? 'text-emerald-500'
+                        : ''
                     }
                   />{' '}
                   Watchlist
@@ -563,6 +548,7 @@ const App: React.FC = () => {
               Search Results
             </h2>
             {searchResults.length > 0 ? (
+              // ranking numbers ONLY when view === 'search'
               renderGrid(searchResults, true)
             ) : (
               !isSearching && (
@@ -652,10 +638,8 @@ const App: React.FC = () => {
         currentKey={tmdbKey}
         currentGeminiKey={geminiKey}
         currentOpenAIKey={openaiKey}
-        onSave={async (key, newGeminiKey, newOpenAIKey) => {
-          // You can paste up to 3 Gemini keys here, comma-separated.
-          // Example: key1,key2,key3
-          saveKeys(key, newGeminiKey, newOpenAIKey);
+        onSave={async (key, geminiKey, openaiKey) => {
+          saveKeys(key, geminiKey, openaiKey);
         }}
       />
     </div>
