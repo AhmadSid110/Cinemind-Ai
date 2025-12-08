@@ -1,3 +1,5 @@
+// src/services/geminiService.ts
+// We use the library you ALREADY have installed:
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GeminiFilter } from "../types";
 
@@ -43,34 +45,32 @@ export const analyzeQuery = async (userQuery: string, apiKey: string): Promise<G
   }
 
   try {
-    // 1. Use the standard class
+    // 1. Initialize the Old SDK (which you have installed)
     const genAI = new GoogleGenerativeAI(apiKey);
     
-    // 2. Use the CORRECT model name (1.5-flash is current standard)
+    // 2. Use the NEWEST Stable Model: "gemini-2.5-flash"
+    // "gemini-1.5-flash-001" is retired, which caused the 404 error
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash-001",
-      systemInstruction: SYSTEM_PROMPT, // System prompt moves here
-      generationConfig: { responseMimeType: "application/json" } // Force JSON
+      model: "gemini-2.5-flash", 
+      systemInstruction: SYSTEM_PROMPT,
+      generationConfig: { responseMimeType: "application/json" }
     });
 
     const result = await model.generateContent(userQuery);
     const response = await result.response;
     
-    // 3. Call text() as a function
+    // 3. Old SDK uses .text() as a function
     const text = response.text();
     
     if (!text) throw new Error("No response from AI");
 
-    // 4. Clean up any accidental markdown fences just in case
     const cleanText = text.replace(/```json/g, "").replace(/```/g, "").trim();
-
-    const parsed = JSON.parse(cleanText);
-    return parsed as GeminiFilter;
+    return JSON.parse(cleanText) as GeminiFilter;
 
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
     
-    // Fallback allows the app to keep functioning even if AI fails
+    // Fallback allows the app to keep functioning
     return {
       searchType: 'general',
       query: userQuery,
