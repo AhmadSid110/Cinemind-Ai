@@ -48,7 +48,7 @@ export const analyzeQuery = async (userQuery: string, apiKey: string): Promise<G
     
     // 2. Use the CORRECT model name (1.5-flash is current standard)
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-1.5-flash",
+      model: "gemini-1.5-flash-001",
       systemInstruction: SYSTEM_PROMPT, // System prompt moves here
       generationConfig: { responseMimeType: "application/json" } // Force JSON
     });
