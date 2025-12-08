@@ -2,28 +2,40 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+
+    <!-- Viewport / Mobile -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"
+    />
+
+    <!-- PWA / Theme -->
     <meta name="theme-color" content="#06b6d4" />
-    <meta name="description" content="AI-powered movie and TV show discovery app with intelligent recommendations" />
+    <meta
+      name="description"
+      content="AI-powered movie and TV show discovery app with intelligent recommendations"
+    />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="CineRank AI" />
-    
+    <meta name="apple-mobile-web-app-title" content="CineMind AI" />
+
     <title>CineMind AI</title>
-    
+
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
-    
-    <!-- Favicon and Icons -->
+
+    <!-- Icons -->
     <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    
+
+    <!-- ✅ Tailwind CDN (acceptable for your setup) -->
     <script src="https://cdn.tailwindcss.com"></script>
+
     <style>
-      /* Cyberpunk Background Grid */
+      /* Background */
       body {
-        background-color: #030712; /* Gray 950 */
-        background-image: 
+        background-color: #030712;
+        background-image:
           linear-gradient(rgba(6, 182, 212, 0.05) 1px, transparent 1px),
           linear-gradient(90deg, rgba(6, 182, 212, 0.05) 1px, transparent 1px);
         background-size: 50px 50px;
@@ -31,7 +43,7 @@
         color: #e2e8f0;
       }
 
-      /* Neon Scrollbar */
+      /* Scrollbar */
       ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
@@ -43,74 +55,52 @@
         background: linear-gradient(180deg, #06b6d4, #3b82f6);
         border-radius: 3px;
       }
-      ::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(180deg, #22d3ee, #60a5fa);
-        box-shadow: 0 0 10px #22d3ee;
-      }
-      
-      /* Smooth Font Rendering */
+
+      /* Font smoothing */
       html {
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
       }
-      
-      /* Mobile safe area support */
+
+      /* Safe area */
       body {
-        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        padding: env(safe-area-inset-top)
+                 env(safe-area-inset-right)
+                 env(safe-area-inset-bottom)
+                 env(safe-area-inset-left);
       }
-      
-      /* Hide scrollbar utility class */
+
+      /* Hide scrollbar utility */
       .scrollbar-hide {
-        -ms-overflow-style: none;  /* IE and Edge */
-        scrollbar-width: none;  /* Firefox */
+        scrollbar-width: none;
       }
       .scrollbar-hide::-webkit-scrollbar {
-        display: none;  /* Chrome, Safari and Opera */
+        display: none;
       }
-      
-      /* Landscape mode optimizations */
+
+      /* Landscape tweaks */
       @media screen and (orientation: landscape) and (max-height: 600px) {
-        /* Reduce header height in landscape */
         .landscape-compact-header {
           height: 60px !important;
         }
-        
-        /* Adjust padding for landscape */
-        .landscape-compact-padding {
-          padding-top: 1rem !important;
-          padding-bottom: 1rem !important;
-        }
-        
-        /* Make grids more compact in landscape */
-        .landscape-compact-grid {
-          gap: 1rem !important;
-        }
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0"
-  }
-}
-</script>
-</head>
+  </head>
+
   <body>
     <div id="root"></div>
+
+    <!-- ✅ Vite entry -->
     <script type="module" src="/src/index.tsx"></script>
-    
-    <!-- Service Worker Registration -->
+
+    <!-- ✅ Service Worker -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(registration => console.log('SW registered:', registration))
-            .catch(err => console.log('SW registration failed:', err));
+          navigator.serviceWorker
+            .register('/sw.js')
+            .then(reg => console.log('SW registered:', reg))
+            .catch(err => console.error('SW registration failed:', err));
         });
       }
     </script>
