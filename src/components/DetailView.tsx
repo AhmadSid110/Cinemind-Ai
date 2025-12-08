@@ -24,6 +24,7 @@ interface DetailViewProps {
   isFavorite: boolean;
   isWatchlist: boolean;
   onCastClick: (personId: number) => void;
+  onEpisodeClick?: (showId: number, seasonNumber: number, episodeNumber: number) => void;
   userRatings: { [key: string]: number };
   onRate: (itemId: string, rating: number) => void;
 }
@@ -37,6 +38,7 @@ const DetailView: React.FC<DetailViewProps> = ({
   isFavorite,
   isWatchlist,
   onCastClick,
+  onEpisodeClick,
   userRatings,
   onRate
 }) => {
@@ -383,7 +385,11 @@ const DetailView: React.FC<DetailViewProps> = ({
                           {episodes.map(ep => {
                               const episodeKey = generateEpisodeKey(item.id, ep.season_number, ep.episode_number);
                               return (
-                              <div key={ep.id} className="bg-slate-900/50 p-3 rounded-xl border border-white/5 group hover:border-cyan-500/30 transition-all">
+                              <div 
+                                key={ep.id} 
+                                onClick={() => onEpisodeClick?.(item.id, ep.season_number, ep.episode_number)}
+                                className="bg-slate-900/50 p-3 rounded-xl border border-white/5 group hover:border-cyan-500/30 transition-all cursor-pointer"
+                              >
                                   <div className="flex gap-3 mb-2">
                                       <div className="w-24 aspect-video bg-slate-800 rounded-lg overflow-hidden shrink-0 relative">
                                           {ep.still_path ? (
@@ -406,7 +412,7 @@ const DetailView: React.FC<DetailViewProps> = ({
                                       </div>
                                   </div>
                                   {/* Episode Rating */}
-                                  <div className="mt-2 pt-2 border-t border-white/5">
+                                  <div className="mt-2 pt-2 border-t border-white/5" onClick={(e) => e.stopPropagation()}>
                                       <StarRating
                                           value={userRatings[episodeKey] || 0}
                                           onChange={(rating) => onRate(episodeKey, rating)}

@@ -220,6 +220,37 @@ const App: React.FC = () => {
     }
   };
 
+  const handleEpisodeClick = async (showId: number, seasonNumber: number, episodeNumber: number) => {
+    if (!tmdbKey) return;
+    setState((prev) => ({ ...prev, isLoading: true }));
+    try {
+      const episodeDetails = await tmdb.getEpisodeDetails(
+        tmdbKey,
+        showId,
+        seasonNumber,
+        episodeNumber
+      );
+
+      // Get the show title from selectedItem if available
+      if (state.selectedItem) {
+        episodeDetails.show_name = state.selectedItem.title || state.selectedItem.name;
+      }
+
+      setState((prev) => ({
+        ...prev,
+        selectedEpisode: episodeDetails,
+        isLoading: false,
+      }));
+    } catch (err) {
+      console.error(err);
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        error: 'Could not load episode details.',
+      }));
+    }
+  };
+
   const handleCastClick = async (personId: number) => {
     setState((prev) => ({
       ...prev,
@@ -654,6 +685,7 @@ const App: React.FC = () => {
             (w) => w.id === state.selectedItem?.id
           )}
           onCastClick={handleCastClick}
+          onEpisodeClick={handleEpisodeClick}
           userRatings={state.userRatings}
           onRate={rateItem}
         />
