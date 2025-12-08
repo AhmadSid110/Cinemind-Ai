@@ -1,3 +1,4 @@
+// src/services/geminiService.ts
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { GeminiFilter } from "../types";
 
@@ -17,8 +18,7 @@ Rules:
 
 async function tryGenerate(apiKey: string, query: string): Promise<GeminiFilter> {
   const genAI = new GoogleGenerativeAI(apiKey);
-  // Using gemini-2.5-flash as it is the current standard.
-  // If this fails (unlikely), change to "gemini-1.5-flash".
+  // Using gemini-2.5-flash
   const model = genAI.getGenerativeModel({ 
     model: "gemini-2.5-flash", 
     systemInstruction: SYSTEM_PROMPT,
