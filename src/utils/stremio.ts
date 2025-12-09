@@ -1,76 +1,70 @@
 // src/utils/stremio.ts
+import { MediaDetail } from '../types';
 
-/**
- * Build Stremio links (app + web) using best-match search strings.
- *
- * Movies  →  "Inception 2010"
- * Series  →  "Rick and Morty"
- * Episode →  "Rick and Morty S03E04"
- */
-
-interface BuildStremioQueryInput {
-  title: string;
-  year?: number;
-  season?: number;
-  episode?: number;
+export interface EpisodeContext {
+  showTitle?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
 }
 
 /**
- * Create Stremio-compatible search query
+ * Build a Stremio search URL.
+ *
+ * Movies: "Title 2014"
+ * Series: "Title"
+ * Episodes: "Title S01E05"
+ *
+ * We use the same pattern Stremio uses on the web:
+ *   https://app.strem.io/shell-v4.4/#/search?q=Rick%20and%20morty
  */
-function buildQuery({
-  title,
-  year,
-  season,
-  episode,
-}: BuildStremioQueryInput): string {
-  let query = title.trim();
+type MinimalMedia = {
+  title?: string | null;
+  name?: string | null;
+  media_type?: string | null;
+  first_air_date?: string | null;
+  release_date?: string | null;
+  number_of_seasons?: number | null;
+} & Partial<MediaDetail>;
 
-  // Append year (movies only)
-  if (year && !season && !episode) {
-    query += ` ${year}`;
+export function buildStremioSearchUrl(
+  media: MinimalMedia,
+  episode?: EpisodeContext
+): string {
+  const isTv =
+    media.media_type === 'tv' ||
+    !!media.number_of_seasons;
+
+  const baseTitle =
+    (episode?.showTitle ||
+      media.title ||
+      media.name ||
+      '').trim();
+
+  let query = baseTitle;
+
+  // For movies, append year – helps Stremio pick the correct match
+  if (!isTv) {
+    const rawDate = media.release_date || media.first_air_date || '';
+    if (rawDate) {
+      const year = new Date(rawDate).getFullYear();
+      if (!Number.isNaN(year)) {
+        query += ` ${year}`;
+      }
+    }
   }
 
-  // Append episode info
-  if (season && episode) {
-    const s = String(season).padStart(2, '0');
-    const e = String(episode).padStart(2, '0');
+  // If we have episode info, append SxxEyy (Stremio understands this pattern)
+  if (episode?.seasonNumber && episode?.episodeNumber) {
+    const s = String(episode.seasonNumber).padStart(2, '0');
+    const e = String(episode.episodeNumber).padStart(2, '0');
     query += ` S${s}E${e}`;
   }
 
-  return query;
-}
-
-/**
- * Generate BOTH app + web links
- */
-export function getStremioLinks(input: BuildStremioQueryInput) {
-  const query = buildQuery(input);
   const encoded = encodeURIComponent(query);
 
-  return {
-    // ✅ Android app deep-link
-    app: `stremio://search?query=${encoded}`,
+  // This matches your working example:
+  // https://app.strem.io/shell-v4.4/#/search?q=Rick%20and%20morty
+  const webUrl = `https://app.strem.io/shell-v4.4/#/search?q=${encoded}`;
 
-    // ✅ Correct Stremio web search
-    web: `https://app.strem.io/shell-v4.4/#/search?q=${encoded}`,
-
-    // Useful for debugging/logging
-    query,
-  };
-}
-
-/**
- * Try opening Stremio app, fallback to web
- */
-export function openInStremio(input: BuildStremioQueryInput) {
-  const { app, web } = getStremioLinks(input);
-
-  // Try app first
-  window.location.href = app;
-
-  // Fallback to web if app not installed
-  setTimeout(() => {
-    window.open(web, '_blank', 'noopener,noreferrer');
-  }, 700);
+  return webUrl;
 }
