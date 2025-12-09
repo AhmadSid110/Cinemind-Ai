@@ -1,11 +1,10 @@
+Here’s a clean, ready-to-replace EpisodeDetailView.tsx that matches your current stremio.ts (using buildStremioEpisodeUrl) and your TMDB episode details shape.
+
 // src/components/EpisodeDetailView.tsx
 import React from 'react';
 import { X, Star, Calendar, Tv } from 'lucide-react';
 import { EpisodeDetail, Review } from '../types';
-import {
-  buildStremioEpisodeUrl,
-  StremioEpisodeContext,
-} from '../utils/stremio';
+import { buildStremioEpisodeUrl } from '../utils/stremio';
 
 interface EpisodeDetailViewProps {
   episode: EpisodeDetail;
@@ -33,7 +32,9 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
       ? episode.vote_average.toFixed(1)
       : 'N/A';
 
-  // Stremio deep link for this episode
+  // --- Stremio deep link for this episode ---
+
+  // external_ids only exists because you appended it in getEpisodeDetails
   const externalIds = (episode as any).external_ids || {};
   const imdbId: string | undefined =
     externalIds.imdb_id || undefined;
@@ -42,7 +43,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
       ? externalIds.tvdb_id
       : undefined;
 
-  const stremioEpisodeCtx: StremioEpisodeContext = {
+  const stremioEpisodeUrl = buildStremioEpisodeUrl({
     title: showTitle || episode.name || '',
     year: airYear,
     type: 'series',
@@ -50,11 +51,9 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
     tvdbId,
     season: episode.season_number,
     episode: episode.episode_number,
-  };
+  });
 
-  const stremioEpisodeUrl = buildStremioEpisodeUrl(
-    stremioEpisodeCtx
-  );
+  // ------------------------------------------
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-2">
@@ -68,7 +67,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
         </button>
 
         <div className="grid md:grid-cols-[1.1fr_1.2fr] gap-0 h-full">
-          {/* Left: still */}
+          {/* Left: still image */}
           <div className="relative bg-slate-900">
             <img
               src={
@@ -85,9 +84,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
               {showTitle && (
                 <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-black/50 text-xs text-slate-200">
                   <Tv size={14} />
-                  <span className="font-semibold">
-                    {showTitle}
-                  </span>
+                  <span className="font-semibold">{showTitle}</span>
                 </div>
               )}
               <h2 className="text-xl md:text-2xl font-bold text-white">
@@ -156,30 +153,26 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
                   Your Rating
                 </h3>
                 <div className="flex items-center gap-1">
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map(
-                    (n) => (
-                      <button
-                        key={n}
-                        onClick={() =>
-                          onRate(String(episode.id), n)
-                        }
-                        className={`p-1 ${
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => onRate(String(episode.id), n)}
+                      className={`p-1 ${
+                        userRating && userRating >= n
+                          ? 'text-cyan-400'
+                          : 'text-slate-600'
+                      }`}
+                    >
+                      <Star
+                        size={16}
+                        className={
                           userRating && userRating >= n
-                            ? 'text-cyan-400'
-                            : 'text-slate-600'
-                        }`}
-                      >
-                        <Star
-                          size={16}
-                          className={
-                            userRating && userRating >= n
-                              ? 'fill-cyan-400'
-                              : 'fill-slate-800'
-                          }
-                        />
-                      </button>
-                    )
-                  )}
+                            ? 'fill-cyan-400'
+                            : 'fill-slate-800'
+                        }
+                      />
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -202,8 +195,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
                             rev.author_details.username ||
                             'User'}
                         </span>
-                        {typeof rev.author_details?.rating ===
-                          'number' && (
+                        {typeof rev.author_details?.rating === 'number' && (
                           <span className="inline-flex items-center gap-1 text-xs text-amber-300">
                             <Star
                               size={12}
