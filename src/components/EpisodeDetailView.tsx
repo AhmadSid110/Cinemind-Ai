@@ -1,10 +1,11 @@
-Here’s a clean, ready-to-replace EpisodeDetailView.tsx that matches your current stremio.ts (using buildStremioEpisodeUrl) and your TMDB episode details shape.
-
 // src/components/EpisodeDetailView.tsx
 import React from 'react';
 import { X, Star, Calendar, Tv } from 'lucide-react';
 import { EpisodeDetail, Review } from '../types';
-import { buildStremioEpisodeUrl } from '../utils/stremio';
+import {
+  buildStremioEpisodeUrl,
+  StremioEpisodeContext,
+} from '../utils/stremio';
 
 interface EpisodeDetailViewProps {
   episode: EpisodeDetail;
@@ -32,18 +33,16 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
       ? episode.vote_average.toFixed(1)
       : 'N/A';
 
-  // --- Stremio deep link for this episode ---
-
-  // external_ids only exists because you appended it in getEpisodeDetails
-  const externalIds = (episode as any).external_ids || {};
+  // External IDs for Cinemeta-style deep links (if available)
+  const externalIds: any = (episode as any).external_ids || {};
   const imdbId: string | undefined =
-    externalIds.imdb_id || undefined;
-  const tvdbId: number | undefined =
-    typeof externalIds.tvdb_id === 'number'
-      ? externalIds.tvdb_id
+    typeof externalIds.imdb_id === 'string' && externalIds.imdb_id.trim()
+      ? externalIds.imdb_id.trim()
       : undefined;
+  const tvdbId: number | undefined =
+    typeof externalIds.tvdb_id === 'number' ? externalIds.tvdb_id : undefined;
 
-  const stremioEpisodeUrl = buildStremioEpisodeUrl({
+  const stremioEpisodeCtx: StremioEpisodeContext = {
     title: showTitle || episode.name || '',
     year: airYear,
     type: 'series',
@@ -51,9 +50,9 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
     tvdbId,
     season: episode.season_number,
     episode: episode.episode_number,
-  });
+  };
 
-  // ------------------------------------------
+  const stremioEpisodeUrl = buildStremioEpisodeUrl(stremioEpisodeCtx);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-2">
@@ -67,7 +66,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
         </button>
 
         <div className="grid md:grid-cols-[1.1fr_1.2fr] gap-0 h-full">
-          {/* Left: still image */}
+          {/* Left: still */}
           <div className="relative bg-slate-900">
             <img
               src={
@@ -88,8 +87,8 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
                 </div>
               )}
               <h2 className="text-xl md:text-2xl font-bold text-white">
-                S{episode.season_number} · E{episode.episode_number}{' '}
-                &mdash; {episode.name}
+                S{episode.season_number} · E{episode.episode_number} —{' '}
+                {episode.name}
               </h2>
               <div className="flex items-center gap-3 text-xs text-slate-300">
                 <span className="inline-flex items-center gap-1">
