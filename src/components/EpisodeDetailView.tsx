@@ -1,3 +1,4 @@
+// src/components/EpisodeDetailView.tsx
 import React from 'react';
 import { X, Star, Calendar, Tv } from 'lucide-react';
 import { EpisodeDetail, Review } from '../types';
@@ -22,19 +23,28 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
     ? new Date(episode.air_date).getFullYear()
     : 'N/A';
 
-  const reviews: Review[] =
-    episode.reviews?.results || [];
+  const reviews: Review[] = episode.reviews?.results || [];
 
   const tmdbRating =
     typeof episode.vote_average === 'number'
       ? episode.vote_average.toFixed(1)
       : 'N/A';
 
-  const stremioEpisodeUrl = buildStremioSearchUrl({
-    title: showTitle || episode.name || '',
-    season: episode.season_number,
-    episode: episode.episode_number,
-  });
+  // ✅ Use the TWO-ARGUMENT form of buildStremioSearchUrl
+  // media arg + separate episode context
+  const stremioEpisodeUrl = buildStremioSearchUrl(
+    {
+      // minimal media description for the helper
+      title: showTitle || episode.name || '',
+      media_type: 'tv',
+      first_air_date: episode.air_date || '',
+    },
+    {
+      showTitle: showTitle || episode.name || '',
+      seasonNumber: episode.season_number,
+      episodeNumber: episode.episode_number,
+    }
+  );
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-2">
@@ -86,7 +96,10 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
                 </span>
                 {typeof userRating === 'number' && (
                   <span className="inline-flex items-center gap-1 text-cyan-300">
-                    <Star size={14} className="fill-cyan-400 text-cyan-400" />
+                    <Star
+                      size={14}
+                      className="fill-cyan-400 text-cyan-400"
+                    />
                     Your {userRating.toFixed(1)}
                   </span>
                 )}
@@ -107,7 +120,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
             </div>
 
             {/* Open in Stremio (episode-aware) */}
-            <div className="mt-4">
+            <div className="mt-1">
               <a
                 href={stremioEpisodeUrl}
                 target="_blank"
@@ -155,7 +168,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
             )}
 
             {/* TMDB Reviews */}
-            {reviews.length > 0 && (
+            {reviews.length > 0 ? (
               <div className="mt-2 space-y-3">
                 <h3 className="text-sm font-semibold text-slate-200">
                   TMDB Reviews
@@ -168,10 +181,11 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
                     >
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-xs font-semibold text-slate-100">
-                          {rev.author || rev.author_details.username || 'User'}
+                          {rev.author ||
+                            rev.author_details.username ||
+                            'User'}
                         </span>
-                        {typeof rev.author_details?.rating ===
-                          'number' && (
+                        {typeof rev.author_details?.rating === 'number' && (
                           <span className="inline-flex items-center gap-1 text-xs text-amber-300">
                             <Star
                               size={12}
@@ -188,9 +202,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
                   ))}
                 </div>
               </div>
-            )}
-
-            {reviews.length === 0 && (
+            ) : (
               <p className="text-xs text-slate-500">
                 No TMDB reviews available for this episode yet.
               </p>
