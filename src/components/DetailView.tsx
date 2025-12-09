@@ -8,7 +8,6 @@ import {
   Star,
   Calendar,
   Clock,
-  Video,
   ChevronDown,
   MonitorPlay,
   ExternalLink,
@@ -44,7 +43,7 @@ interface DetailViewProps {
   onRate: (itemId: string, rating: number) => void;
 }
 
-// Small helper so we can use `filled` prop
+// Heart wrapper so we can toggle filled state
 const HeartIcon: React.FC<{ filled: boolean; size?: number; className?: string }> = ({
   filled,
   size = 20,
@@ -73,7 +72,7 @@ const DetailView: React.FC<DetailViewProps> = ({
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
 
-  // Load initial season for TV shows
+  // Initial season for TV shows
   useEffect(() => {
     if (item.media_type === 'tv' && item.seasons) {
       const seasonToLoad =
@@ -102,21 +101,23 @@ const DetailView: React.FC<DetailViewProps> = ({
     ? `https://image.tmdb.org/t/p/original${item.backdrop_path}`
     : 'https://picsum.photos/1920/1080';
 
-  const title = item.title || item.name;
-  const year = item.release_date || item.first_air_date
-    ? new Date(item.release_date || item.first_air_date || '').getFullYear()
-    : undefined;
+  const title = item.title || item.name || '';
+  const year =
+    item.release_date || item.first_air_date
+      ? new Date(item.release_date || item.first_air_date || '').getFullYear()
+      : undefined;
+
   const trailer = item.videos?.results.find(
-    (v) => v.type === 'Trailer' && v.site === 'YouTube'
+    (v) => v.type === 'Trailer' && v.site === 'YouTube',
   );
 
-  // Filter crew to important roles
-  const crew =
+  // Crew (deduped + important roles)
+  const crew: CrewMember[] =
     item.credits?.crew
       ?.filter((c) =>
         ['Director', 'Executive Producer', 'Writer', 'Screenplay', 'Creator'].includes(
-          c.job
-        )
+          c.job,
+        ),
       )
       .reduce((acc, current) => {
         const exists = acc.find((x) => x.id === current.id);
@@ -127,15 +128,17 @@ const DetailView: React.FC<DetailViewProps> = ({
 
   const cast = item.credits?.cast.slice(0, 10) || [];
 
-  // Letterboxd URL
+  // Letterboxd
   const letterboxdUrl =
     item.media_type === 'movie'
       ? `https://letterboxd.com/tmdb/${item.id}`
-      : `https://letterboxd.com/search/${encodeURIComponent(title || '')}`;
+      : `https://letterboxd.com/search/${encodeURIComponent(title)}`;
 
+  // Stremio – basic title + year + media type; episode-aware handled elsewhere
   const stremioUrl = buildStremioSearchUrl({
-    title: title || '',
-    year: year || undefined,
+    title,
+    mediaType: (item.media_type as 'movie' | 'tv') || 'movie',
+    year,
   });
 
   const mediaKey = generateMediaKey(item.media_type as 'movie' | 'tv', item.id);
@@ -143,7 +146,7 @@ const DetailView: React.FC<DetailViewProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-[#030712] text-slate-200 animate-in fade-in zoom-in-95 duration-300 scrollbar-thin scrollbar-thumb-cyan-900 scrollbar-track-transparent selection:bg-cyan-500/30">
-      {/* Hero Section */}
+      {/* HERO */}
       <div className="relative h-[70vh] w-full group overflow-hidden">
         <div className="absolute inset-0">
           <img
@@ -156,7 +159,7 @@ const DetailView: React.FC<DetailViewProps> = ({
           <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 mix-blend-overlay" />
         </div>
 
-        {/* Close Button */}
+        {/* Close */}
         <button
           onClick={onClose}
           className="absolute top-6 right-6 z-50 bg-black/40 hover:bg-cyan-500/20 text-white p-2.5 rounded-full backdrop-blur-md border border-white/10 hover:border-cyan-400/50 transition-all duration-300 group/close shadow-[0_0_15px_rgba(0,0,0,0.5)]"
@@ -167,7 +170,7 @@ const DetailView: React.FC<DetailViewProps> = ({
           />
         </button>
 
-        {/* Hero Content */}
+        {/* Hero content */}
         <div className="absolute bottom-0 left-0 w-full p-8 md:p-12 z-20 pt-32">
           <div className="max-w-5xl">
             {/* Badges */}
@@ -203,7 +206,7 @@ const DetailView: React.FC<DetailViewProps> = ({
               )}
               {item.runtime ? (
                 <span className="flex items-center gap-2">
-                  <Clock size={16} className="text-purple-500" />{' '}
+                  <Clock size={16} className="text-purple-500" />
                   {Math.floor(item.runtime / 60)}h {item.runtime % 60}m
                 </span>
               ) : (
@@ -216,6 +219,7 @@ const DetailView: React.FC<DetailViewProps> = ({
               )}
             </div>
 
+            {/* CTA row */}
             <div className="flex flex-wrap items-center gap-4 animate-in slide-in-from-bottom-4 duration-500 delay-400">
               {trailer && (
                 <a
@@ -252,6 +256,7 @@ const DetailView: React.FC<DetailViewProps> = ({
                 {isWatchlist ? 'On Watchlist' : 'Watchlist'}
               </button>
 
+              {/* Stremio */}
               <a
                 href={stremioUrl}
                 target="_blank"
@@ -266,6 +271,7 @@ const DetailView: React.FC<DetailViewProps> = ({
                 <span>Open in Stremio</span>
               </a>
 
+              {/* Letterboxd */}
               <a
                 href={letterboxdUrl}
                 target="_blank"
@@ -276,7 +282,7 @@ const DetailView: React.FC<DetailViewProps> = ({
               </a>
             </div>
 
-            {/* User Rating Section */}
+            {/* User rating */}
             <div className="mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-500">
               <div className="bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-4 inline-block">
                 <p className="text-sm text-slate-400 mb-2 font-medium">
@@ -293,12 +299,12 @@ const DetailView: React.FC<DetailViewProps> = ({
         </div>
       </div>
 
-      {/* Main Content */}
+      {/* MAIN CONTENT */}
       <div className="max-w-7xl mx-auto px-6 pb-20 -mt-10 relative z-30">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-          {/* Left Column */}
+          {/* LEFT COLUMN */}
           <div className="lg:col-span-2 space-y-12">
-            {/* Tagline & Overview */}
+            {/* Overview */}
             <div className="bg-[#0b1221]/80 backdrop-blur-xl border border-white/5 p-8 rounded-3xl shadow-xl">
               {item.tagline && (
                 <h3 className="text-xl md:text-2xl font-light italic text-cyan-200/80 mb-4 font-serif">
@@ -310,7 +316,7 @@ const DetailView: React.FC<DetailViewProps> = ({
               </p>
             </div>
 
-            {/* Cast Grid */}
+            {/* Cast */}
             <section>
               <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
                 <span className="w-1 h-6 bg-cyan-500 rounded-full shadow-[0_0_10px_#06b6d4]" />
@@ -345,7 +351,7 @@ const DetailView: React.FC<DetailViewProps> = ({
               </div>
             </section>
 
-            {/* Crew Grid */}
+            {/* Crew */}
             {crew.length > 0 && (
               <section>
                 <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
@@ -386,9 +392,7 @@ const DetailView: React.FC<DetailViewProps> = ({
                     >
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-semibold text-slate-100">
-                          {rev.author ||
-                            rev.author_details.username ||
-                            'User'}
+                          {rev.author || rev.author_details.username || 'User'}
                         </span>
                         {typeof rev.author_details?.rating === 'number' && (
                           <span className="inline-flex items-center gap-1 text-sm text-amber-300">
@@ -413,14 +417,14 @@ const DetailView: React.FC<DetailViewProps> = ({
             )}
           </div>
 
-          {/* Right Column: Season / Episode stats */}
+          {/* RIGHT COLUMN – seasons / episodes */}
           <div className="lg:col-span-1 space-y-8">
             {item.media_type === 'tv' && item.seasons && (
               <div className="bg-[#0b1221]/80 backdrop-blur-xl border border-white/5 rounded-3xl p-6 shadow-xl sticky top-24">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                    <MonitorPlay className="text-cyan-400" size={20} /> Season{' '}
-                    {selectedSeason}
+                    <MonitorPlay className="text-cyan-400" size={20} />
+                    Season {selectedSeason}
                   </h3>
                   <div className="relative">
                     <select
@@ -443,7 +447,7 @@ const DetailView: React.FC<DetailViewProps> = ({
                   </div>
                 </div>
 
-                {/* Bar Chart */}
+                {/* Rating chart */}
                 <div className="h-48 w-full mb-6">
                   {loadingEpisodes ? (
                     <div className="h-full flex items-center justify-center">
@@ -463,40 +467,28 @@ const DetailView: React.FC<DetailViewProps> = ({
                           contentStyle={{
                             backgroundColor: '#0f172a',
                             borderColor: '#334155',
-                            borderRadius: '8px',
+                            borderRadius: 8,
                             color: '#fff',
                           }}
-                          itemStyle={{ color: '#22d3ee' }}
-                          cursor={{ fill: '#334155', opacity: 0.4 }}
-                          formatter={(value: number) => [
-                            value.toFixed(1),
-                            'Rating',
-                          ]}
+                          cursor={{ fill: '#1f2937', opacity: 0.4 }}
+                          formatter={(value: number) => [value.toFixed(1), 'Rating']}
                           labelFormatter={(label) => `Episode ${label}`}
                         />
                         <Bar dataKey="vote_average" radius={[4, 4, 0, 0]}>
-                          {episodes.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill="url(#colorGradient)" />
+                          {episodes.map((_, idx) => (
+                            <Cell key={idx} fill="url(#episodeGradient)" />
                           ))}
                         </Bar>
                         <defs>
                           <linearGradient
-                            id="colorGradient"
+                            id="episodeGradient"
                             x1="0"
                             y1="0"
                             x2="0"
                             y2="1"
                           >
-                            <stop
-                              offset="5%"
-                              stopColor="#06b6d4"
-                              stopOpacity={0.8}
-                            />
-                            <stop
-                              offset="95%"
-                              stopColor="#3b82f6"
-                              stopOpacity={0.3}
-                            />
+                            <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.8} />
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.3} />
                           </linearGradient>
                         </defs>
                       </BarChart>
@@ -508,36 +500,42 @@ const DetailView: React.FC<DetailViewProps> = ({
                   )}
                 </div>
 
-                {/* Episode list (if you have one) can go here */}
-                {/* Example click handler: */}
-                {onEpisodeClick && episodes.length > 0 && (
-                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                    {episodes.map((ep) => (
-                      <button
-                        key={ep.id}
-                        onClick={() =>
-                          onEpisodeClick(
-                            item.id,
-                            ep.season_number,
-                            ep.episode_number
-                          )
-                        }
-                        className="w-full text-left px-3 py-2 rounded-lg bg-slate-900/60 hover:bg-slate-800 border border-slate-800/80 hover:border-cyan-500/40 text-sm flex items-center justify-between gap-2"
-                      >
-                        <span className="truncate">
-                          S{ep.season_number} · E{ep.episode_number} — {ep.name}
+                {/* Episode list */}
+                <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                  {episodes.map((ep) => (
+                    <button
+                      key={ep.id}
+                      type="button"
+                      onClick={() =>
+                        onEpisodeClick &&
+                        onEpisodeClick(item.id, selectedSeason, ep.episode_number)
+                      }
+                      className="w-full text-left bg-slate-900/60 hover:bg-slate-800 border border-slate-700/70 hover:border-cyan-500/50 rounded-xl px-3 py-2 flex items-center justify-between gap-3 transition-all"
+                    >
+                      <div className="flex flex-col">
+                        <span className="text-xs text-slate-500">
+                          S{String(selectedSeason).padStart(2, '0')} · E
+                          {String(ep.episode_number).padStart(2, '0')}
                         </span>
-                        <span className="text-xs text-amber-300 flex items-center gap-1">
-                          <Star
-                            size={12}
-                            className="fill-amber-400 text-amber-400"
-                          />
-                          {ep.vote_average?.toFixed(1)}
+                        <span className="text-sm text-slate-100 line-clamp-1">
+                          {ep.name}
                         </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                      </div>
+                      <span className="inline-flex items-center gap-1 text-xs text-amber-300">
+                        <Star
+                          size={12}
+                          className="fill-amber-400 text-amber-400"
+                        />
+                        {ep.vote_average?.toFixed(1)}
+                      </span>
+                    </button>
+                  ))}
+                  {episodes.length === 0 && !loadingEpisodes && (
+                    <p className="text-xs text-slate-500 text-center">
+                      No episodes found for this season.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </div>
