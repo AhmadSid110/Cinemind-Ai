@@ -8,6 +8,7 @@ import {
   Star,
   Calendar,
   Clock,
+  Video,
   ChevronDown,
   MonitorPlay,
   ExternalLink,
@@ -18,7 +19,10 @@ import { MediaDetail, MediaItem, Episode, CrewMember } from '../types';
 import { getSeasonEpisodes } from '../services/tmdbService';
 import { generateMediaKey } from '../utils';
 import StarRating from './StarRating';
-import { buildStremioSearchUrl } from '../utils/stremio';
+import {
+  buildStremioMediaUrl,
+  StremioMediaContext,
+} from '../utils/stremio';
 
 import {
   BarChart,
@@ -40,17 +44,21 @@ interface DetailViewProps {
   isFavorite: boolean;
   isWatchlist: boolean;
   onCastClick: (personId: number) => void;
-  onEpisodeClick?: (showId: number, seasonNumber: number, episodeNumber: number) => void;
+  onEpisodeClick?: (
+    showId: number,
+    seasonNumber: number,
+    episodeNumber: number
+  ) => void;
   userRatings: { [key: string]: number };
   onRate: (itemId: string, rating: number) => void;
 }
 
-// Small helper so we can use `filled` prop
-const HeartIcon: React.FC<{ filled: boolean; size?: number; className?: string }> = ({
-  filled,
-  size = 20,
-  className = '',
-}) => (
+// helper heart so we can pass `filled`
+const HeartIcon: React.FC<{
+  filled: boolean;
+  size?: number;
+  className?: string;
+}> = ({ filled, size = 20, className = '' }) => (
   <LucideHeart
     size={size}
     className={`${className} ${filled ? 'fill-current' : ''}`}
@@ -74,7 +82,35 @@ const DetailView: React.FC<DetailViewProps> = ({
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
 
-  // ---------- DERIVED DATA ----------
+  // Initial season for TV shows
+  useEffect(() => {
+    if (item.media_type === 'tv' && item.seasons) {
+      const seasonToLoad =
+        item.seasons.find((s) => s.season_number > 0)?.season_number || 1;
+      setSelectedSeason(seasonToLoad);
+    }
+  }, [item]);
+
+  // Fetch episodes when season changes
+  useEffect(() => {
+    if (item.media_type === 'tv' && item.seasons && selectedSeason) {
+      const fetchEpisodes = async () => {
+        try {
+          setLoadingEpisodes(true);
+          const data = await getSeasonEpisodes(
+            apiKey,
+            item.id,
+            selectedSeason
+          );
+          setEpisodes(data);
+        } finally {
+          setLoadingEpisodes(false);
+        }
+      };
+      fetchEpisodes();
+    }
+  }, [item, apiKey, selectedSeason]);
+
   const backdropUrl = item.backdrop_path
     ? `https://image.tmdb.org/t/p/original${item.backdrop_path}`
     : 'https://picsum.photos/1920/1080';
@@ -82,15 +118,17 @@ const DetailView: React.FC<DetailViewProps> = ({
   const title = item.title || item.name || '';
   const year =
     item.release_date || item.first_air_date
-      ? new Date(item.release_date || item.first_air_date || '').getFullYear()
+      ? new Date(
+          (item.release_date as string) ||
+            (item.first_air_date as string)
+        ).getFullYear()
       : undefined;
 
   const trailer = item.videos?.results.find(
     (v) => v.type === 'Trailer' && v.site === 'YouTube'
   );
 
-  const cast = item.credits?.cast?.slice(0, 10) || [];
-
+  // Crew (director / writer / creator)
   const crew: CrewMember[] =
     item.credits?.crew
       ?.filter((c) =>
@@ -105,53 +143,45 @@ const DetailView: React.FC<DetailViewProps> = ({
       }, [] as CrewMember[])
       .slice(0, 6) || [];
 
-  // Letterboxd URL
+  const cast = item.credits?.cast.slice(0, 10) || [];
+
+  // Letterboxd link
   const letterboxdUrl =
     item.media_type === 'movie'
       ? `https://letterboxd.com/tmdb/${item.id}`
       : `https://letterboxd.com/search/${encodeURIComponent(title)}`;
 
-  // Stremio URL: use media detail; util handles movie vs series
-  const stremioUrl = buildStremioSearchUrl(item);
+  // === STREMIO DEEP LINK (movie / series) ===
+  const externalIds = (item as any).external_ids || {};
+  const imdbId: string | undefined =
+    (item as any).imdb_id ||
+    externalIds.imdb_id ||
+    undefined;
+  const tvdbId: number | undefined =
+    typeof externalIds.tvdb_id === 'number'
+      ? externalIds.tvdb_id
+      : undefined;
 
-  const mediaKey = generateMediaKey(item.media_type as 'movie' | 'tv', item.id);
-  const userMediaRating = userRatings[mediaKey] || 0;
-
-  // ---------- EFFECTS: INITIAL SEASON ----------
-  useEffect(() => {
-    if (item.media_type === 'tv' && item.seasons) {
-      const seasonToLoad =
-        item.seasons.find((s) => s.season_number > 0)?.season_number || 1;
-      setSelectedSeason(seasonToLoad);
-    }
-  }, [item]);
-
-  // ---------- EFFECTS: LOAD EPISODES ON SEASON CHANGE ----------
-  useEffect(() => {
-    if (item.media_type === 'tv' && item.seasons && selectedSeason) {
-      const fetchEpisodes = async () => {
-        try {
-          setLoadingEpisodes(true);
-          const data = await getSeasonEpisodes(apiKey, item.id, selectedSeason);
-          setEpisodes(data);
-        } finally {
-          setLoadingEpisodes(false);
-        }
-      };
-      fetchEpisodes();
-    }
-  }, [item, apiKey, selectedSeason]);
-
-  // ---------- HANDLERS ----------
-  const handleEpisodeClick = (ep: Episode) => {
-    if (!onEpisodeClick) return;
-    onEpisodeClick(item.id, ep.season_number, ep.episode_number);
+  const stremioCtx: StremioMediaContext = {
+    title,
+    year,
+    type: item.media_type === 'movie' ? 'movie' : 'series',
+    imdbId,
+    tvdbId,
   };
 
-  // ---------- RENDER ----------
+  const stremioUrl = buildStremioMediaUrl(stremioCtx);
+
+  // Rating key
+  const mediaKey = generateMediaKey(
+    item.media_type as 'movie' | 'tv',
+    item.id
+  );
+  const userMediaRating = userRatings[mediaKey] || 0;
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-[#030712] text-slate-200 animate-in fade-in zoom-in-95 duration-300 scrollbar-thin scrollbar-thumb-cyan-900 scrollbar-track-transparent selection:bg-cyan-500/30">
-      {/* HERO SECTION */}
+      {/* HERO */}
       <div className="relative h-[70vh] w-full group overflow-hidden">
         <div className="absolute inset-0">
           <img
@@ -161,10 +191,10 @@ const DetailView: React.FC<DetailViewProps> = ({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[#030712] via-[#030712]/60 to-transparent" />
           <div className="absolute inset-0 bg-gradient-to-r from-[#030712] via-[#030712]/80 to-transparent" />
-          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
+          <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 brightness-100 mix-blend-overlay" />
         </div>
 
-        {/* Close Button */}
+        {/* CLOSE */}
         <button
           onClick={onClose}
           className="absolute top-6 right-6 z-50 bg-black/40 hover:bg-cyan-500/20 text-white p-2.5 rounded-full backdrop-blur-md border border-white/10 hover:border-cyan-400/50 transition-all duration-300 group/close shadow-[0_0_15px_rgba(0,0,0,0.5)]"
@@ -175,10 +205,10 @@ const DetailView: React.FC<DetailViewProps> = ({
           />
         </button>
 
-        {/* Hero Content */}
+        {/* HERO CONTENT */}
         <div className="absolute bottom-0 left-0 w-full p-8 md:p-12 z-20 pt-32">
           <div className="max-w-5xl">
-            {/* Badges */}
+            {/* badges */}
             <div className="flex flex-wrap items-center gap-3 mb-4 animate-in slide-in-from-left-4 duration-500 delay-100">
               {item.status && (
                 <span className="bg-cyan-500/20 backdrop-blur-md text-cyan-300 px-3 py-1 rounded-lg text-xs font-bold border border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.2)]">
@@ -186,7 +216,7 @@ const DetailView: React.FC<DetailViewProps> = ({
                 </span>
               )}
               <span className="flex items-center gap-1.5 bg-yellow-500/10 backdrop-blur-md text-yellow-400 px-3 py-1 rounded-lg text-xs font-bold border border-yellow-500/20">
-                <Star size={12} fill="currentColor" />{' '}
+                <Star size={12} fill="currentColor" />
                 {item.vote_average?.toFixed(1)}
               </span>
               {item.genres?.map((g) => (
@@ -199,7 +229,6 @@ const DetailView: React.FC<DetailViewProps> = ({
               ))}
             </div>
 
-            {/* Title + Meta */}
             <h1 className="text-5xl md:text-7xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-slate-200 to-slate-500 mb-6 drop-shadow-2xl animate-in slide-in-from-left-4 duration-500 delay-200 leading-tight">
               {title}
             </h1>
@@ -207,25 +236,25 @@ const DetailView: React.FC<DetailViewProps> = ({
             <div className="flex flex-wrap items-center gap-6 text-slate-400 text-sm font-medium mb-8 animate-in slide-in-from-left-4 duration-500 delay-300">
               {year && (
                 <span className="flex items-center gap-2">
-                  <Calendar size={16} className="text-cyan-500" /> {year}
+                  <Calendar size={16} className="text-cyan-500" />
+                  {year}
                 </span>
               )}
               {item.runtime ? (
                 <span className="flex items-center gap-2">
-                  <Clock size={16} className="text-purple-500" />{' '}
+                  <Clock size={16} className="text-purple-500" />
                   {Math.floor(item.runtime / 60)}h {item.runtime % 60}m
                 </span>
               ) : (
                 item.number_of_seasons && (
                   <span className="flex items-center gap-2">
-                    <Clock size={16} className="text-purple-500" />{' '}
+                    <Clock size={16} className="text-purple-500" />
                     {item.number_of_seasons} Seasons
                   </span>
                 )
               )}
             </div>
 
-            {/* Main CTAs */}
             <div className="flex flex-wrap items-center gap-4 animate-in slide-in-from-bottom-4 duration-500 delay-400">
               {trailer && (
                 <a
@@ -238,6 +267,7 @@ const DetailView: React.FC<DetailViewProps> = ({
                 </a>
               )}
 
+              {/* Favorite */}
               <button
                 onClick={() => onToggleFavorite(item)}
                 className={`px-6 py-3.5 rounded-xl font-bold flex items-center gap-3 transition-all border backdrop-blur-md hover:scale-105 ${
@@ -250,6 +280,7 @@ const DetailView: React.FC<DetailViewProps> = ({
                 {isFavorite ? 'Favorited' : 'Favorite'}
               </button>
 
+              {/* Watchlist */}
               <button
                 onClick={() => onToggleWatchlist(item)}
                 className={`px-6 py-3.5 rounded-xl font-bold flex items-center gap-3 transition-all border backdrop-blur-md hover:scale-105 ${
@@ -284,11 +315,12 @@ const DetailView: React.FC<DetailViewProps> = ({
                 rel="noreferrer"
                 className="bg-[#202830]/80 hover:bg-[#2c3440] text-slate-200 px-6 py-3.5 rounded-xl font-bold flex items-center gap-3 transition-all hover:scale-105 border border-white/5 hover:border-white/10 backdrop-blur-md"
               >
-                <ExternalLink size={20} /> Letterboxd
+                <ExternalLink size={20} />
+                Letterboxd
               </a>
             </div>
 
-            {/* User Rating */}
+            {/* User rating */}
             <div className="mt-6 animate-in slide-in-from-bottom-4 duration-500 delay-500">
               <div className="bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-xl p-4 inline-block">
                 <p className="text-sm text-slate-400 mb-2 font-medium">
@@ -308,9 +340,9 @@ const DetailView: React.FC<DetailViewProps> = ({
       {/* MAIN CONTENT */}
       <div className="max-w-7xl mx-auto px-6 pb-20 -mt-10 relative z-30">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-          {/* LEFT COLUMN */}
+          {/* LEFT: overview, cast, crew, reviews */}
           <div className="lg:col-span-2 space-y-12">
-            {/* Tagline & Overview */}
+            {/* Tagline & overview */}
             <div className="bg-[#0b1221]/80 backdrop-blur-xl border border-white/5 p-8 rounded-3xl shadow-xl">
               {item.tagline && (
                 <h3 className="text-xl md:text-2xl font-light italic text-cyan-200/80 mb-4 font-serif">
@@ -322,7 +354,7 @@ const DetailView: React.FC<DetailViewProps> = ({
               </p>
             </div>
 
-            {/* Cast Grid */}
+            {/* Cast */}
             <section>
               <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
                 <span className="w-1 h-6 bg-cyan-500 rounded-full shadow-[0_0_10px_#06b6d4]" />
@@ -357,7 +389,7 @@ const DetailView: React.FC<DetailViewProps> = ({
               </div>
             </section>
 
-            {/* Crew Grid */}
+            {/* Crew */}
             {crew.length > 0 && (
               <section>
                 <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
@@ -383,51 +415,57 @@ const DetailView: React.FC<DetailViewProps> = ({
               </section>
             )}
 
-            {/* TMDB Reviews */}
-            {item.reviews && item.reviews.results && item.reviews.results.length > 0 && (
-              <section className="mt-6 space-y-3">
-                <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                  <span className="w-1 h-6 bg-amber-500 rounded-full shadow-[0_0_10px_#f59e0b]" />
-                  TMDB Reviews
-                </h3>
-                <div className="space-y-3 max-h-[32rem] overflow-y-auto pr-1">
-                  {item.reviews.results.map((rev) => (
-                    <div
-                      key={rev.id}
-                      className="p-4 rounded-xl bg-[#0f172a] border border-white/5 hover:border-amber-500/30 transition-all"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-semibold text-slate-100">
-                          {rev.author || rev.author_details.username || 'User'}
-                        </span>
-                        {typeof rev.author_details?.rating === 'number' && (
-                          <span className="inline-flex items-center gap-1 text-sm text-amber-300">
-                            <Star
-                              size={14}
-                              className="fill-amber-400 text-amber-400"
-                            />
-                            {rev.author_details.rating.toFixed(1)}
+            {/* TMDB reviews */}
+            {item.reviews &&
+              item.reviews.results &&
+              item.reviews.results.length > 0 && (
+                <section className="mt-6 space-y-3">
+                  <h3 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+                    <span className="w-1 h-6 bg-amber-500 rounded-full shadow-[0_0_10px_#f59e0b]" />
+                    TMDB Reviews
+                  </h3>
+                  <div className="space-y-3 max-h-[32rem] overflow-y-auto pr-1">
+                    {item.reviews.results.map((rev) => (
+                      <div
+                        key={rev.id}
+                        className="p-4 rounded-xl bg-[#0f172a] border border-white/5 hover:border-amber-500/30 transition-all"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-slate-100">
+                            {rev.author ||
+                              rev.author_details.username ||
+                              'User'}
                           </span>
-                        )}
+                          {typeof rev.author_details?.rating ===
+                            'number' && (
+                            <span className="inline-flex items-center gap-1 text-sm text-amber-300">
+                              <Star
+                                size={14}
+                                className="fill-amber-400 text-amber-400"
+                              />
+                              {rev.author_details.rating.toFixed(1)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-300 line-clamp-6 leading-relaxed">
+                          {rev.content}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-2">
+                          {new Date(
+                            rev.created_at
+                          ).toLocaleDateString()}
+                        </p>
                       </div>
-                      <p className="text-sm text-slate-300 line-clamp-6 leading-relaxed">
-                        {rev.content}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-2">
-                        {new Date(rev.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
+                    ))}
+                  </div>
+                </section>
+              )}
           </div>
 
-          {/* RIGHT COLUMN: SEASONS & EPISODES */}
+          {/* RIGHT: seasons / episodes chart */}
           <div className="lg:col-span-1 space-y-8">
             {item.media_type === 'tv' && item.seasons && (
               <div className="bg-[#0b1221]/80 backdrop-blur-xl border border-white/5 rounded-3xl p-6 shadow-xl sticky top-24">
-                {/* Season selector */}
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-bold text-white flex items-center gap-2">
                     <MonitorPlay className="text-cyan-400" size={20} />
@@ -436,14 +474,20 @@ const DetailView: React.FC<DetailViewProps> = ({
                   <div className="relative">
                     <select
                       value={selectedSeason}
-                      onChange={(e) => setSelectedSeason(Number(e.target.value))}
+                      onChange={(e) =>
+                        setSelectedSeason(Number(e.target.value))
+                      }
                       className="bg-slate-900 text-white border border-slate-700 rounded-lg py-2 pl-3 pr-8 appearance-none focus:border-cyan-500 focus:outline-none cursor-pointer text-sm font-bold"
                     >
                       {item.seasons
                         .filter((s) => s.season_number > 0)
                         .map((s) => (
-                          <option key={s.id} value={s.season_number}>
-                            Season {s.season_number} ({s.episode_count} eps)
+                          <option
+                            key={s.id}
+                            value={s.season_number}
+                          >
+                            Season {s.season_number} ({s.episode_count}{' '}
+                            eps)
                           </option>
                         ))}
                     </select>
@@ -454,108 +498,5 @@ const DetailView: React.FC<DetailViewProps> = ({
                   </div>
                 </div>
 
-                {/* Ratings Bar Chart */}
-                <div className="h-48 w-full mb-6">
-                  {loadingEpisodes ? (
-                    <div className="h-full flex items-center justify-center">
-                      <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  ) : episodes.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={episodes}>
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          vertical={false}
-                          stroke="#1e293b"
-                        />
-                        <XAxis dataKey="episode_number" hide />
-                        <YAxis domain={[0, 10]} hide />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: '#0f172a',
-                            borderColor: '#334155',
-                            borderRadius: '8px',
-                            color: '#fff',
-                          }}
-                          itemStyle={{ color: '#22d3ee' }}
-                          cursor={{ fill: '#334155', opacity: 0.4 }}
-                          formatter={(value: number) => [value.toFixed(1), 'Rating']}
-                          labelFormatter={(label) => `Episode ${label}`}
-                        />
-                        <Bar dataKey="vote_average" radius={[4, 4, 0, 0]}>
-                          {episodes.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill="url(#episodeRatingGradient)" />
-                          ))}
-                        </Bar>
-                        <defs>
-                          <linearGradient id="episodeRatingGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.85} />
-                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.3} />
-                          </linearGradient>
-                        </defs>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="text-center text-slate-500 text-sm py-10">
-                      No rating data available
-                    </div>
-                  )}
-                </div>
-
-                {/* Episode List */}
-                <div className="space-y-3 max-h-[22rem] overflow-y-auto pr-1">
-                  {loadingEpisodes && episodes.length === 0 && (
-                    <p className="text-sm text-slate-500 text-center py-4">
-                      Loading episodes…
-                    </p>
-                  )}
-                  {!loadingEpisodes && episodes.length === 0 && (
-                    <p className="text-sm text-slate-500 text-center py-4">
-                      No episodes found for this season.
-                    </p>
-                  )}
-                  {episodes.map((ep) => (
-                    <button
-                      key={ep.id}
-                      type="button"
-                      onClick={() => handleEpisodeClick(ep)}
-                      className="w-full flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-700/60 hover:border-cyan-500/60 hover:bg-slate-900 transition-all text-left"
-                    >
-                      <div>
-                        <p className="text-xs text-slate-500 mb-1">
-                          S{ep.season_number} · E{ep.episode_number}
-                        </p>
-                        <p className="text-sm font-semibold text-slate-100 line-clamp-1">
-                          {ep.name}
-                        </p>
-                        <p className="text-xs text-slate-400 line-clamp-2 mt-0.5">
-                          {ep.overview || 'No synopsis available.'}
-                        </p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="inline-flex items-center gap-1 text-xs text-amber-300">
-                          <Star
-                            size={12}
-                            className="fill-amber-400 text-amber-400"
-                          />
-                          {ep.vote_average?.toFixed(1) ?? '–'}
-                        </span>
-                        {ep.air_date && (
-                          <span className="text-[10px] text-slate-500">
-                            {ep.air_date}
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default DetailView;
+                {/* Rating bar chart */}
+  
