@@ -1,10 +1,3 @@
-Here’s your App.tsx cleaned up and ready to replace, with just a couple of safe fixes:
-
-Avoids TypeScript error when attaching show_name to the episode (casts to any).
-
-Keeps your current episode + Stremio deep-link flow intact.
-
-
 // src/App.tsx
 import React, { useState, useEffect } from 'react';
 import {
@@ -148,7 +141,6 @@ const App: React.FC = () => {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
     await search();
 
-    // Read latest explanation / error from hook after search
     setState((prev) => ({
       ...prev,
       view: 'search',
@@ -159,12 +151,13 @@ const App: React.FC = () => {
   };
 
   const handleCardClick = async (item: MediaItem) => {
-    // Episode card (from episode ranking search)
+    // Episode card (from AI "top episodes" ranking)
     if ((item as any).season_number && (item as any).episode_number) {
       if (!tmdbKey) return;
       setState((prev) => ({ ...prev, isLoading: true }));
       try {
-        const showId = (item as any).show_id || (item as any).tv_id;
+        const showId: number | undefined =
+          (item as any).show_id || (item as any).tv_id;
         if (!showId) {
           setState((prev) => ({ ...prev, isLoading: false }));
           alert(
@@ -181,14 +174,6 @@ const App: React.FC = () => {
           (item as any).season_number,
           (item as any).episode_number
         );
-
-        // Store show_name on the episode object (for EpisodeDetailView)
-        (episodeDetails as any).show_name =
-          (item as any).show_name ||
-          (item as any).series_name ||
-          item.name ||
-          item.title ||
-          '';
 
         setState((prev) => ({
           ...prev,
@@ -208,6 +193,7 @@ const App: React.FC = () => {
       return;
     }
 
+    // Normal movie / TV card
     if (!tmdbKey) return;
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
@@ -248,12 +234,6 @@ const App: React.FC = () => {
         episodeNumber
       );
 
-      // Attach show_name using currently opened show (DetailView)
-      if (state.selectedItem) {
-        (episodeDetails as any).show_name =
-          state.selectedItem.title || state.selectedItem.name || '';
-      }
-
       setState((prev) => ({
         ...prev,
         selectedEpisode: episodeDetails,
@@ -270,10 +250,12 @@ const App: React.FC = () => {
   };
 
   const handleCastClick = async (personId: number) => {
+    if (!tmdbKey) return;
     setState((prev) => ({
       ...prev,
       isLoading: true,
       selectedItem: null,
+      selectedEpisode: null,
     }));
     try {
       const person = await tmdb.getPersonDetails(tmdbKey, personId);
@@ -339,11 +321,12 @@ const App: React.FC = () => {
     const list =
       libraryTab === 'favorites' ? state.favorites : state.watchlist;
     if (libraryFilter === 'all') return list;
-    if (libraryFilter === 'animation') {
+    if (libraryFilter === 'animation')
       return list.filter((i) => i.genre_ids?.includes(16));
-    }
     return list.filter((i) => i.media_type === libraryFilter);
   };
+
+  const selectedEpisode = state.selectedEpisode;
 
   // ---------- RENDER ----------
   return (
@@ -466,9 +449,7 @@ const App: React.FC = () => {
                 className="flex items-center gap-2 px-3 py-2 text-xs md:text-sm rounded-xl bg-slate-900/60 border border-white/10 hover:border-cyan-400/60 hover:bg-cyan-500/10 transition"
               >
                 <LogIn size={16} />
-                <span className="hidden md:inline">
-                  Sign in with Google
-                </span>
+                <span className="hidden md:inline">Sign in with Google</span>
               </button>
             )}
 
@@ -638,7 +619,6 @@ const App: React.FC = () => {
               Search Results
             </h2>
             {searchResults.length > 0 ? (
-              // ranking numbers ONLY when view === 'search'
               renderGrid(searchResults, true)
             ) : (
               !isSearching && (
@@ -723,19 +703,15 @@ const App: React.FC = () => {
         />
       )}
 
-      {state.selectedEpisode && (
+      {selectedEpisode && (
         <EpisodeDetailView
-          episode={state.selectedEpisode}
-          showTitle={
-            (state.selectedEpisode as any)?.show_name ||
-            state.selectedItem?.title ||
-            state.selectedItem?.name
-          }
+          episode={selectedEpisode}
+          showTitle={state.selectedItem?.title || state.selectedItem?.name}
           onClose={() =>
             setState((prev) => ({ ...prev, selectedEpisode: null }))
           }
           onRate={rateItem}
-          userRating={state.userRatings[String(state.selectedEpisode.id)]}
+          userRating={state.userRatings[String(selectedEpisode.id)]}
         />
       )}
 
