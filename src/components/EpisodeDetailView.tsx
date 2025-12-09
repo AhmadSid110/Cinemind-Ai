@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Star, Calendar, Tv } from 'lucide-react';
 import { EpisodeDetail, Review } from '../types';
+import { buildStremioSearchUrl } from '../utils/stremio';
 
 interface EpisodeDetailViewProps {
   episode: EpisodeDetail;
@@ -28,6 +29,13 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
     typeof episode.vote_average === 'number'
       ? episode.vote_average.toFixed(1)
       : 'N/A';
+
+  const stremioEpisodeUrl = buildStremioSearchUrl({
+    type: 'tv',
+    title: showTitle || episode.name || '',
+    season: episode.season_number,
+    episode: episode.episode_number,
+  });
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-2">
@@ -97,6 +105,23 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
               <p className="text-sm text-slate-300 leading-relaxed">
                 {episode.overview || 'No synopsis available for this episode.'}
               </p>
+            </div>
+
+            {/* Open in Stremio (episode-aware) */}
+            <div className="mt-1">
+              <a
+                href={stremioEpisodeUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1b2332]/90 hover:bg-[#252f3f] border border-cyan-500/40 hover:border-cyan-400/70 text-xs font-semibold text-slate-100 transition-all"
+              >
+                <img
+                  src="/stremio-icon.png"
+                  alt="Open in Stremio"
+                  className="w-5 h-5 rounded-md"
+                />
+                <span>Open this episode in Stremio</span>
+              </a>
             </div>
 
             {/* Optional user rating control */}
