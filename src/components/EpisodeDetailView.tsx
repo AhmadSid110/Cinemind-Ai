@@ -31,7 +31,6 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
       : 'N/A';
 
   const stremioEpisodeUrl = buildStremioSearchUrl({
-    type: 'tv',
     title: showTitle || episode.name || '',
     season: episode.season_number,
     episode: episode.episode_number,

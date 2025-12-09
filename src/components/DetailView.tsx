@@ -134,7 +134,6 @@ const DetailView: React.FC<DetailViewProps> = ({
       : `https://letterboxd.com/search/${encodeURIComponent(title || '')}`;
 
   const stremioUrl = buildStremioSearchUrl({
-    type: item.media_type as 'movie' | 'tv',
     title: title || '',
     year: year || undefined,
   });

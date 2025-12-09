@@ -1,8 +1,5 @@
 // src/utils/stremio.ts
-export type StremioMediaType = 'movie' | 'tv';
-
 export interface StremioSearchOptions {
-  type: StremioMediaType;
   title: string;
   year?: number | string;
   season?: number;
@@ -10,39 +7,24 @@ export interface StremioSearchOptions {
 }
 
 /**
- * Builds a best-effort Stremio search URL.
- * For movies:   "Title (Year)"
- * For episodes: "Title S01E05"
+ * Build a Stremio web-app search URL.
+ * This works in any browser and will open the Stremio web UI.
+ * If the native app is registered for app.strem.io on the device,
+ * the OS may offer to open it there.
  */
-export function buildStremioSearchUrl(opts: StremioSearchOptions): string {
-  const { type, title, year, season, episode } = opts;
+export function buildStremioSearchUrl({
+  title,
+  year,
+  season,
+  episode,
+}: StremioSearchOptions): string {
+  // "Best possible" query string
+  let q = title.trim();
+  if (year) q += ` ${year}`;
+  if (season) q += ` S${String(season).padStart(2, '0')}`;
+  if (episode) q += `E${String(episode).padStart(2, '0')}`;
 
-  if (!title) return 'https://www.stremio.com';
-
-  let query = title.trim();
-
-  // Append year for movies (helps disambiguate)
-  if (type === 'movie' && year) {
-    query += ` (${year})`;
-  }
-
-  // Append season/episode for TV if available
-  if (type === 'tv' && season) {
-    const s = season.toString().padStart(2, '0');
-    if (episode) {
-      const e = episode.toString().padStart(2, '0');
-      query += ` S${s}E${e}`;
-    } else {
-      query += ` S${s}`;
-    }
-  }
-
-  // Most Stremio setups understand either stremio:// or a web search.
-  // We'll go with a generic web search URL that users can still use
-  // even if the custom protocol isn't registered.
-  const encoded = encodeURIComponent(query);
-
-  // If you know your Stremio URI scheme, you can change this to:
-  // return `stremio://search?query=${encoded}`;
-  return `https://www.stremio.com/search?query=${encoded}`;
+  return `https://app.strem.io/shell-v4.4/#/search?search=${encodeURIComponent(
+    q,
+  )}`;
 }
