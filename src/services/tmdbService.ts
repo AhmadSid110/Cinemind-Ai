@@ -1,5 +1,13 @@
 // src/services/tmdbService.ts
-import { MediaItem, MediaDetail, Episode, Season, PersonDetail, Review, EpisodeDetail } from '../types';
+import {
+  MediaItem,
+  MediaDetail,
+  Episode,
+  Season,
+  PersonDetail,
+  Review,
+  EpisodeDetail,
+} from '../types';
 
 const BASE_URL = 'https://api.themoviedb.org/3';
 
@@ -215,6 +223,7 @@ export const discoverMedia = async (
 
 /**
  * Full details for a movie or TV show.
+ * NOTE: includes external_ids (IMDb, TVDB, etc.) and reviews.
  */
 export const getDetails = async (
   apiKey: string,
@@ -304,6 +313,7 @@ export const getPersonId = async (
 
 /**
  * Full details for a specific TV episode.
+ * NOTE: includes credits, external_ids, videos, reviews.
  */
 export const getEpisodeDetails = async (
   apiKey: string,
@@ -323,4 +333,22 @@ export const getEpisodeDetails = async (
   if (!res.ok) throw new Error('Failed to fetch episode details');
   const data = await res.json();
   return data as EpisodeDetail;
+};
+
+/**
+ * (Optional helper) Get just external IDs (IMDb, TVDB, etc.) for a title.
+ * Useful for Stremio/Cinemeta mapping if you don't want full details.
+ */
+export const getExternalIds = async (
+  apiKey: string,
+  type: 'movie' | 'tv',
+  id: number
+): Promise<{ imdb_id?: string | null; tvdb_id?: number | null }> => {
+  const res = await fetch(getUrl(`/${type}/${id}/external_ids`, apiKey));
+  if (!res.ok) throw new Error('Failed to fetch external IDs');
+  const data = await res.json();
+  return {
+    imdb_id: data.imdb_id ?? null,
+    tvdb_id: data.tvdb_id ?? null,
+  };
 };
