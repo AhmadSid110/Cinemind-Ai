@@ -1,95 +1,114 @@
 // src/utils/stremio.ts
 
-import type { MediaDetail } from '../types';
-
-export interface StremioUrls {
-  app: string; // stremio:/// deep link (opens the app)
-  web: string; // https://app.strem.io/... fallback
+/**
+ * Options for simple Stremio search deeplink.
+ *
+ * - `title`  : required text (movie / show / episode title)
+ * - `year`   : optional year to disambiguate movies
+ * - `season` : optional season for episode-style queries
+ * - `episode`: optional episode number for episode-style queries
+ */
+export interface StremioSearchOptions {
+  title: string;
+  year?: number;
+  season?: number;
+  episode?: number;
 }
 
-const STREMIO_APP_SCHEME = 'stremio:///';
-const STREMIO_WEB_BASE = 'https://app.strem.io/shell-v4.4/#';
-
 /**
- * Normalise + encode a query or id.
- */
-const enc = (s: string) => encodeURIComponent(s.trim());
-
-/**
- * Extract a Cinemeta-compatible meta id from TMDB details.
- * Prefer IMDb id, fall back to TMDB id if nothing else.
- */
-export const getCinemetaIdFromMedia = (media: Partial<MediaDetail>): string | null => {
-  const imdb =
-    (media as any)?.external_ids?.imdb_id ||
-    (media as any)?.imdb_id;
-
-  if (imdb && typeof imdb === 'string' && imdb.trim()) {
-    return imdb.trim();
-  }
-
-  // Very soft fallback – some addons support tmdb: ids
-  if (media.id) {
-    return `tmdb:${media.media_type || 'movie'}:${media.id}`;
-  }
-
-  return null;
-};
-
-/**
- * Build Stremio search URLs – used as generic fallback.
- */
-export const buildStremioSearchUrls = (query: string): StremioUrls => {
-  const q = enc(query);
-  return {
-    app: `${STREMIO_APP_SCHEME}search?search=${q}`,
-    web: `${STREMIO_WEB_BASE}/search?q=${q}`,
-  };
-};
-
-/**
- * Detail page for a movie or series (no specific episode).
- */
-export const buildStremioDetailUrlsForMedia = (
-  media: MediaDetail
-): StremioUrls | null => {
-  const metaId = getCinemetaIdFromMedia(media);
-  if (!metaId) return null;
-
-  const type = media.media_type === 'tv' ? 'series' : 'movie';
-  const idEnc = enc(metaId);
-
-  return {
-    app: `${STREMIO_APP_SCHEME}detail/${type}/${idEnc}/${idEnc}`,
-    web: `${STREMIO_WEB_BASE}/detail/${type}/${idEnc}/${idEnc}`,
-  };
-};
-
-/**
- * Episode-aware detail URL:
- *  series meta id = Cinemeta id (usually IMDb, e.g. tt0944947)
- *  video id       = `${metaId}:${season}:${episode}`
+ * Build a Stremio **search** deeplink.
  *
- * Example:
- *  stremio:///detail/series/tt0108778/tt0108778:1:1
+ * Examples of generated queries:
+ *  - "Interstellar 2014"
+ *  - "Breaking Bad"
+ *  - "Breaking Bad S01E01"
+ *
+ * URL form:
+ *   stremio:///search?search={ENCODED_QUERY}
  */
-export const buildStremioEpisodeUrls = (
-  seriesMetaId: string | null | undefined,
-  seasonNumber: number | undefined,
-  episodeNumber: number | undefined
-): StremioUrls | null => {
-  if (!seriesMetaId || !seasonNumber || !episodeNumber) return null;
+export function buildStremioSearchUrl(opts: StremioSearchOptions): string {
+  const parts: string[] = [];
 
-  const meta = seriesMetaId.trim();
-  if (!meta) return null;
+  const baseTitle = (opts.title || '').trim();
+  if (baseTitle) parts.push(baseTitle);
 
-  const videoId = `${meta}:${seasonNumber}:${episodeNumber}`;
+  // Add year for movies when available
+  if (typeof opts.year === 'number' && !Number.isNaN(opts.year)) {
+    parts.push(String(opts.year));
+  }
 
-  const idEnc = enc(meta);
-  const vidEnc = enc(videoId);
+  // If this looks like an episode, add SxxEyy suffix
+  if (
+    typeof opts.season === 'number' &&
+    typeof opts.episode === 'number' &&
+    opts.season > 0 &&
+    opts.episode > 0
+  ) {
+    const s = String(opts.season).padStart(2, '0');
+    const e = String(opts.episode).padStart(2, '0');
+    parts.push(`S${s}E${e}`);
+  }
 
-  return {
-    app: `${STREMIO_APP_SCHEME}detail/series/${idEnc}/${vidEnc}`,
-    web: `${STREMIO_WEB_BASE}/detail/series/${idEnc}/${vidEnc}`,
-  };
-};
+  const query = parts.join(' ').trim() || ' ';
+  const encoded = encodeURIComponent(query);
+
+  // Custom scheme – should trigger the Stremio app on mobile/desktop
+  return `stremio:///search?search=${encoded}`;
+}
+
+/**
+ * Options for **detail** deeplink using Cinemeta mapping.
+ *
+ * - type    : "movie" or "series"
+ * - imdbId  : IMDb ID like "tt0108778" (required for a true detail link)
+ * - season  : optional season for series episodes
+ * - episode : optional episode number for series episodes
+ * - title/year/season/episode : used ONLY for fallback search if imdbId missing
+ */
+export interface StremioDetailOptions {
+  type: 'movie' | 'series';
+  imdbId?: string | null;
+  season?: number;
+  episode?: number;
+
+  // Fallback metadata for search if imdbId is not available
+  title?: string;
+  year?: number;
+}
+
+/**
+ * Build a Stremio **detail** deeplink if we have an IMDb ID.
+ * Otherwise falls back to `buildStremioSearchUrl`.
+ *
+ * Examples:
+ *  movie  : stremio:///detail/movie/tt0066921/tt0066921
+ *  series : stremio:///detail/series/tt0108778/tt0108778:1:1
+ */
+export function buildStremioDetailUrl(opts: StremioDetailOptions): string {
+  const imdbId = (opts.imdbId || '').trim();
+
+  // If we don't have an IMDb id yet, fall back to a regular search link
+  if (!imdbId) {
+    return buildStremioSearchUrl({
+      title: opts.title || '',
+      year: opts.year,
+      season: opts.season,
+      episode: opts.episode,
+    });
+  }
+
+  let videoId = imdbId;
+
+  // For series episodes, append :season:episode as per Cinemeta docs
+  if (
+    opts.type === 'series' &&
+    typeof opts.season === 'number' &&
+    typeof opts.episode === 'number' &&
+    opts.season > 0 &&
+    opts.episode > 0
+  ) {
+    videoId = `${imdbId}:${opts.season}:${opts.episode}`;
+  }
+
+  return `stremio:///detail/${opts.type}/${imdbId}/${videoId}`;
+}
