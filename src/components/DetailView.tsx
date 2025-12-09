@@ -18,6 +18,7 @@ import { MediaDetail, MediaItem, Episode, CrewMember } from '../types';
 import { getSeasonEpisodes } from '../services/tmdbService';
 import { generateMediaKey } from '../utils';
 import StarRating from './StarRating';
+import { buildStremioSearchUrl } from '../utils/stremio';
 import {
   BarChart,
   Bar,
@@ -132,6 +133,11 @@ const DetailView: React.FC<DetailViewProps> = ({
       ? `https://letterboxd.com/tmdb/${item.id}`
       : `https://letterboxd.com/search/${encodeURIComponent(title || '')}`;
 
+  const stremioUrl = buildStremioSearchUrl({
+    title: title || '',
+    year: year || undefined,
+  });
+
   const mediaKey = generateMediaKey(item.media_type as 'movie' | 'tv', item.id);
   const userMediaRating = userRatings[mediaKey] || 0;
 
@@ -245,6 +251,20 @@ const DetailView: React.FC<DetailViewProps> = ({
                 {isWatchlist ? <Check size={20} /> : <Plus size={20} />}
                 {isWatchlist ? 'On Watchlist' : 'Watchlist'}
               </button>
+
+              <a
+                href={stremioUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-[#1b2332]/90 hover:bg-[#252f3f] text-slate-100 px-6 py-3.5 rounded-xl font-bold flex items-center gap-3 transition-all hover:scale-105 border border-cyan-500/30 hover:border-cyan-400/60 backdrop-blur-md"
+              >
+                <img
+                  src="/stremio-icon.png"
+                  alt="Open in Stremio"
+                  className="w-6 h-6 rounded-md"
+                />
+                <span>Open in Stremio</span>
+              </a>
 
               <a
                 href={letterboxdUrl}
