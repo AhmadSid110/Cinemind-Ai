@@ -499,4 +499,139 @@ const DetailView: React.FC<DetailViewProps> = ({
                 </div>
 
                 {/* Rating bar chart */}
-  
+                <div className="h-48 w-full mb-6">
+                  {loadingEpisodes ? (
+                    <div className="h-full flex items-center justify-center">
+                      <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+                    </div>
+                  ) : episodes.length > 0 ? (
+                    <ResponsiveContainer
+                      width="100%"
+                      height="100%"
+                    >
+                      <BarChart data={episodes}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          vertical={false}
+                          stroke="#1e293b"
+                        />
+                        <XAxis dataKey="episode_number" hide />
+                        <YAxis domain={[0, 10]} hide />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#0f172a',
+                            borderColor: '#334155',
+                            borderRadius: '8px',
+                            color: '#fff',
+                          }}
+                          itemStyle={{ color: '#22d3ee' }}
+                          cursor={{
+                            fill: '#334155',
+                            opacity: 0.4,
+                          }}
+                          formatter={(value: number) => [
+                            value.toFixed(1),
+                            'Rating',
+                          ]}
+                          labelFormatter={(label) =>
+                            `Episode ${label}`
+                          }
+                        />
+                        <Bar dataKey="vote_average" radius={[4, 4, 0, 0]}>
+                          {episodes.map((_, index) => (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill="url(#colorGradient)"
+                            />
+                          ))}
+                        </Bar>
+                        <defs>
+                          <linearGradient
+                            id="colorGradient"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="5%"
+                              stopColor="#06b6d4"
+                              stopOpacity={0.8}
+                            />
+                            <stop
+                              offset="95%"
+                              stopColor="#3b82f6"
+                              stopOpacity={0.3}
+                            />
+                          </linearGradient>
+                        </defs>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="text-center text-slate-500 text-sm py-10">
+                      No rating data available
+                    </div>
+                  )}
+                </div>
+
+                {/* Episode list */}
+                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                  {episodes.map((ep) => (
+                    <button
+                      key={ep.id}
+                      type="button"
+                      onClick={() =>
+                        onEpisodeClick &&
+                        onEpisodeClick(
+                          item.id,
+                          ep.season_number,
+                          ep.episode_number
+                        )
+                      }
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-slate-900/60 hover:bg-slate-800 border border-slate-700/70 hover:border-cyan-500/50 text-left text-xs"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-100">
+                          S{ep.season_number} · E{ep.episode_number}{' '}
+                          — {ep.name}
+                        </span>
+                        <span className="text-[11px] text-slate-400 line-clamp-1">
+                          {ep.overview}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 text-[11px] text-amber-300">
+                        <Star
+                          size={12}
+                          className="fill-amber-400 text-amber-400"
+                        />
+                        {ep.vote_average?.toFixed(1)}
+                      </div>
+                    </button>
+                  ))}
+                  {episodes.length === 0 && !loadingEpisodes && (
+                    <p className="text-xs text-slate-500 text-center py-4">
+                      No episodes found for this season.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* If not TV show, simple info card */}
+            {item.media_type !== 'tv' && (
+              <div className="bg-[#0b1221]/80 backdrop-blur-xl border border-white/5 rounded-3xl p-6 shadow-xl flex flex-col items-center justify-center gap-3">
+                <Video size={32} className="text-slate-500" />
+                <p className="text-sm text-slate-400 text-center">
+                  This title is a movie – explore similar films from
+                  the home screen or use AI search for more.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default DetailView;
