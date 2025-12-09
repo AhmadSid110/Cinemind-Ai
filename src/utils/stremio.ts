@@ -10,39 +10,29 @@ export interface EpisodeContext {
 /**
  * Build a Stremio search URL.
  *
- * Movies: "Title 2014"
- * Series: "Title"
- * Episodes: "Title S01E05"
+ * Examples of the final URL we want:
+ * https://app.strem.io/shell-v4.4/#/search?q=Rick%20and%20Morty
  *
- * We use the same pattern Stremio uses on the web:
- *   https://app.strem.io/shell-v4.4/#/search?q=Rick%20and%20morty
+ * - Movies: "Title 2014"
+ * - Series: "Title"
+ * - Episodes: "Title S01E05"
  */
-type MinimalMedia = {
-  title?: string | null;
-  name?: string | null;
-  media_type?: string | null;
-  first_air_date?: string | null;
-  release_date?: string | null;
-  number_of_seasons?: number | null;
-} & Partial<MediaDetail>;
-
 export function buildStremioSearchUrl(
-  media: MinimalMedia,
+  media: Pick<
+    MediaDetail,
+    'title' | 'name' | 'media_type' | 'release_date' | 'first_air_date' | 'number_of_seasons'
+  >,
   episode?: EpisodeContext
 ): string {
   const isTv =
     media.media_type === 'tv' ||
     !!media.number_of_seasons;
 
-  const baseTitle =
-    (episode?.showTitle ||
-      media.title ||
-      media.name ||
-      '').trim();
+  const baseTitle = (episode?.showTitle || media.title || media.name || '').trim();
 
   let query = baseTitle;
 
-  // For movies, append year – helps Stremio pick the correct match
+  // For movies, appending year helps Stremio pick the right match
   if (!isTv) {
     const rawDate = media.release_date || media.first_air_date || '';
     if (rawDate) {
@@ -53,7 +43,7 @@ export function buildStremioSearchUrl(
     }
   }
 
-  // If we have episode info, append SxxEyy (Stremio understands this pattern)
+  // Episode-aware: SxxEyy
   if (episode?.seasonNumber && episode?.episodeNumber) {
     const s = String(episode.seasonNumber).padStart(2, '0');
     const e = String(episode.episodeNumber).padStart(2, '0');
@@ -62,9 +52,7 @@ export function buildStremioSearchUrl(
 
   const encoded = encodeURIComponent(query);
 
-  // This matches your working example:
+  // ✅ This matches the URL you confirmed works:
   // https://app.strem.io/shell-v4.4/#/search?q=Rick%20and%20morty
-  const webUrl = `https://app.strem.io/shell-v4.4/#/search?q=${encoded}`;
-
-  return webUrl;
+  return `https://app.strem.io/shell-v4.4/#/search?q=${encoded}`;
 }
