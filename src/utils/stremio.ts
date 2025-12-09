@@ -1,57 +1,123 @@
 // src/utils/stremio.ts
-// TRUE Stremio deep-link helpers (Android / Desktop App)
-
-import { MediaDetail, EpisodeDetail } from '../types';
 
 /**
- * Build Stremio deep link for MOVIES or FULL TV SERIES
- * Uses IMDb ID from TMDB external_ids (Cinemeta compatible)
+ * Context for a movie or series in Stremio.
+ * We try Cinemeta-style IDs first (imdb / tvdb),
+ * and fall back to a plain search deep link.
  */
-export function buildStremioMediaUrl(media: MediaDetail): string {
-  const imdbId = media.external_ids?.imdb_id;
-  const title = media.title || media.name || '';
 
-  // ✅ Perfect case – direct open in Stremio app
-  if (imdbId) {
-    if (media.media_type === 'movie') {
-      return `stremio:///detail/movie/${imdbId}/${imdbId}`;
-    }
-
-    if (media.media_type === 'tv') {
-      return `stremio:///detail/series/${imdbId}/${imdbId}`;
-    }
-  }
-
-  // ❌ Fallback – search if IMDb ID missing
-  const year =
-    media.release_date || media.first_air_date
-      ? new Date(media.release_date || media.first_air_date || '').getFullYear()
-      : '';
-
-  const query = encodeURIComponent(`${title} ${year}`.trim());
-  return `stremio:///search?search=${query}`;
+export interface StremioMediaContext {
+  title: string;
+  year?: number;
+  type: 'movie' | 'series';
+  imdbId?: string | null;
+  tvdbId?: number | null;
 }
 
 /**
- * Build Stremio deep link for a SPECIFIC EPISODE
- * Format:
- * stremio:///detail/series/{imdbId}/{imdbId}:{season}:{episode}
+ * Context for a specific episode of a series.
  */
-export function buildStremioEpisodeUrl(
-  showImdbId: string | null | undefined,
-  showTitle: string,
-  seasonNumber: number,
-  episodeNumber: number
-): string {
-  // ✅ Direct Episode Deep Link
-  if (showImdbId) {
-    return `stremio:///detail/series/${showImdbId}/${showImdbId}:${seasonNumber}:${episodeNumber}`;
+export interface StremioEpisodeContext extends StremioMediaContext {
+  season: number;
+  episode: number;
+}
+
+/**
+ * Helper: build Cinemeta meta ID from imdb / tvdb.
+ * - If imdb id exists -> use it directly (e.g. "tt0108778")
+ * - Else if tvdb id exists -> use "tvdb:{id}"
+ * - Else return null (we'll fall back to search).
+ */
+const buildMetaId = (ctx: {
+  imdbId?: string | null;
+  tvdbId?: number | null;
+}): string | null => {
+  if (ctx.imdbId && ctx.imdbId.trim()) {
+    return ctx.imdbId.trim();
+  }
+  if (typeof ctx.tvdbId === 'number') {
+    return `tvdb:${ctx.tvdbId}`;
+  }
+  return null;
+};
+
+/**
+ * Helper: build a human search query, used as fallback
+ * when we don't have a meta ID.
+ */
+const buildSearchQuery = (ctx: {
+  title: string;
+  year?: number;
+  season?: number;
+  episode?: number;
+}): string => {
+  let q = ctx.title.trim();
+
+  if (ctx.year) {
+    q += ` ${ctx.year}`;
   }
 
-  // ❌ Fallback – episode search
-  const s = String(seasonNumber).padStart(2, '0');
-  const e = String(episodeNumber).padStart(2, '0');
-  const query = encodeURIComponent(`${showTitle} S${s}E${e}`);
+  if (ctx.season && ctx.episode) {
+    const s = String(ctx.season).padStart(2, '0');
+    const e = String(ctx.episode).padStart(2, '0');
+    q += ` S${s}E${e}`;
+  }
 
-  return `stremio:///search?search=${query}`;
-}
+  return q;
+};
+
+/**
+ * Build a **deep link** for a movie OR series.
+ *
+ * - If we have a Cinemeta meta ID -> use stremio:///detail/...
+ * - Else fall back to stremio:///search?search=...
+ */
+export const buildStremioMediaUrl = (ctx: StremioMediaContext): string => {
+  const metaId = buildMetaId(ctx);
+
+  if (metaId) {
+    const typePath = ctx.type === 'movie' ? 'movie' : 'series';
+    const videoId = metaId; // show movie or series page
+    return `stremio:///detail/${typePath}/${encodeURIComponent(
+      metaId
+    )}/${encodeURIComponent(videoId)}?autoPlay=false`;
+  }
+
+  // Fallback – search by title + year
+  const query = buildSearchQuery({
+    title: ctx.title,
+    year: ctx.year,
+  });
+
+  return `stremio:///search?search=${encodeURIComponent(query)}`;
+};
+
+/**
+ * Build a **deep link for a specific episode**.
+ *
+ * - If we have meta ID -> videoId = "{metaId}:{season}:{episode}"
+ * - Else fall back to a season/episode search.
+ */
+export const buildStremioEpisodeUrl = (
+  ctx: StremioEpisodeContext
+): string => {
+  const metaId = buildMetaId(ctx);
+
+  if (metaId) {
+    const typePath = 'series';
+    const videoId = `${metaId}:${ctx.season}:${ctx.episode}`;
+    return `stremio:///detail/${typePath}/${encodeURIComponent(
+      metaId
+    )}/${encodeURIComponent(videoId)}?autoPlay=false`;
+  }
+
+  // Fallback – series title + SxxEyy
+  const query = buildSearchQuery({
+    title: ctx.title,
+    year: ctx.year,
+    season: ctx.season,
+    episode: ctx.episode,
+  });
+
+  return `stremio:///search?search=${encodeURIComponent(query)}`;
+};
