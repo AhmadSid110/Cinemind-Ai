@@ -1,7 +1,7 @@
 // src/utils/stremio.ts
 export type StremioMediaType = 'movie' | 'tv';
 
-interface StremioSearchOptions {
+export interface StremioSearchOptions {
   type: StremioMediaType;
   title: string;
   year?: number | string;
@@ -27,10 +27,14 @@ export function buildStremioSearchUrl(opts: StremioSearchOptions): string {
   }
 
   // Append season/episode for TV if available
-  if (type === 'tv' && season && episode) {
+  if (type === 'tv' && season) {
     const s = season.toString().padStart(2, '0');
-    const e = episode.toString().padStart(2, '0');
-    query += ` S${s}E${e}`;
+    if (episode) {
+      const e = episode.toString().padStart(2, '0');
+      query += ` S${s}E${e}`;
+    } else {
+      query += ` S${s}`;
+    }
   }
 
   // Most Stremio setups understand either stremio:// or a web search.

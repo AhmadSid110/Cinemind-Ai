@@ -108,7 +108,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
             </div>
 
             {/* Open in Stremio (episode-aware) */}
-            <div className="mt-1">
+            <div className="mt-4">
               <a
                 href={stremioEpisodeUrl}
                 target="_blank"
