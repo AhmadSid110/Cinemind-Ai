@@ -1,38 +1,30 @@
 // src/utils/stremio.ts
-import { MediaDetail } from '../types';
 
-export interface EpisodeContext {
-  showTitle?: string;
-  seasonNumber?: number;
-  episodeNumber?: number;
-}
+import type { MediaDetail } from '../types';
 
 /**
- * Build a Stremio search URL.
+ * Build a Stremio search deeplink.
  *
- * Examples of the final URL we want:
- * https://app.strem.io/shell-v4.4/#/search?q=Rick%20and%20Morty
+ * We purposely use the "search" scheme (no Cinemeta IDs required):
+ *   stremio:///search?search={query}
  *
- * - Movies: "Title 2014"
- * - Series: "Title"
- * - Episodes: "Title S01E05"
+ * - Movies:  "Title 2014"
+ * - Series:  "Title"
  */
-export function buildStremioSearchUrl(
-  media: Pick<
-    MediaDetail,
-    'title' | 'name' | 'media_type' | 'release_date' | 'first_air_date' | 'number_of_seasons'
-  >,
-  episode?: EpisodeContext
+export function buildStremioSearchLink(
+  media: Pick<MediaDetail, 'title' | 'name' | 'media_type' | 'release_date' | 'first_air_date'>
 ): string {
-  const isTv =
-    media.media_type === 'tv' ||
-    !!media.number_of_seasons;
+  const isTv = media.media_type === 'tv';
 
-  const baseTitle = (episode?.showTitle || media.title || media.name || '').trim();
+  const baseTitle = (media.title || media.name || '').trim();
+  if (!baseTitle) {
+    // Safety fallback – won't crash if somehow title is missing
+    return 'stremio:///search?search=';
+  }
 
   let query = baseTitle;
 
-  // For movies, appending year helps Stremio pick the right match
+  // For movies, appending the year helps Stremio pick the right match
   if (!isTv) {
     const rawDate = media.release_date || media.first_air_date || '';
     if (rawDate) {
@@ -43,16 +35,6 @@ export function buildStremioSearchUrl(
     }
   }
 
-  // Episode-aware: SxxEyy
-  if (episode?.seasonNumber && episode?.episodeNumber) {
-    const s = String(episode.seasonNumber).padStart(2, '0');
-    const e = String(episode.episodeNumber).padStart(2, '0');
-    query += ` S${s}E${e}`;
-  }
-
   const encoded = encodeURIComponent(query);
-
-  // ✅ This matches the URL you confirmed works:
-  // https://app.strem.io/shell-v4.4/#/search?q=Rick%20and%20morty
-  return `https://app.strem.io/shell-v4.4/#/search?q=${encoded}`;
+  return `stremio:///search?search=${encoded}`;
 }
