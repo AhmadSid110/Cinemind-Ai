@@ -468,4 +468,94 @@ const DetailView: React.FC<DetailViewProps> = ({
                           vertical={false}
                           stroke="#1e293b"
                         />
-                        <XAxis dataKey="episode_number" hid
+                        <XAxis dataKey="episode_number" hide />
+                        <YAxis domain={[0, 10]} hide />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#0f172a',
+                            borderColor: '#334155',
+                            borderRadius: '8px',
+                            color: '#fff',
+                          }}
+                          itemStyle={{ color: '#22d3ee' }}
+                          cursor={{ fill: '#334155', opacity: 0.4 }}
+                          formatter={(value: number) => [value.toFixed(1), 'Rating']}
+                          labelFormatter={(label) => `Episode ${label}`}
+                        />
+                        <Bar dataKey="vote_average" radius={[4, 4, 0, 0]}>
+                          {episodes.map((_, index) => (
+                            <Cell key={`cell-${index}`} fill="url(#episodeRatingGradient)" />
+                          ))}
+                        </Bar>
+                        <defs>
+                          <linearGradient id="episodeRatingGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.85} />
+                            <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.3} />
+                          </linearGradient>
+                        </defs>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="text-center text-slate-500 text-sm py-10">
+                      No rating data available
+                    </div>
+                  )}
+                </div>
+
+                {/* Episode List */}
+                <div className="space-y-3 max-h-[22rem] overflow-y-auto pr-1">
+                  {loadingEpisodes && episodes.length === 0 && (
+                    <p className="text-sm text-slate-500 text-center py-4">
+                      Loading episodes…
+                    </p>
+                  )}
+                  {!loadingEpisodes && episodes.length === 0 && (
+                    <p className="text-sm text-slate-500 text-center py-4">
+                      No episodes found for this season.
+                    </p>
+                  )}
+                  {episodes.map((ep) => (
+                    <button
+                      key={ep.id}
+                      type="button"
+                      onClick={() => handleEpisodeClick(ep)}
+                      className="w-full flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-900/60 border border-slate-700/60 hover:border-cyan-500/60 hover:bg-slate-900 transition-all text-left"
+                    >
+                      <div>
+                        <p className="text-xs text-slate-500 mb-1">
+                          S{ep.season_number} · E{ep.episode_number}
+                        </p>
+                        <p className="text-sm font-semibold text-slate-100 line-clamp-1">
+                          {ep.name}
+                        </p>
+                        <p className="text-xs text-slate-400 line-clamp-2 mt-0.5">
+                          {ep.overview || 'No synopsis available.'}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="inline-flex items-center gap-1 text-xs text-amber-300">
+                          <Star
+                            size={12}
+                            className="fill-amber-400 text-amber-400"
+                          />
+                          {ep.vote_average?.toFixed(1) ?? '–'}
+                        </span>
+                        {ep.air_date && (
+                          <span className="text-[10px] text-slate-500">
+                            {ep.air_date}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default DetailView;
