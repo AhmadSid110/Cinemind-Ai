@@ -89,7 +89,7 @@ const App: React.FC = () => {
   const {
     trendingMovies,
     trendingTv,
-    inTheaters: nowPlayingMovies,
+    inTheatres: nowPlayingMovies,
     streamingNow: onAirTv,
   } = useHomeFeed(tmdbKey);
 
@@ -141,6 +141,7 @@ const App: React.FC = () => {
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
     await search();
 
+    // Read latest explanation / error from hook after search
     setState((prev) => ({
       ...prev,
       view: 'search',
@@ -151,13 +152,12 @@ const App: React.FC = () => {
   };
 
   const handleCardClick = async (item: MediaItem) => {
-    // Episode card (from AI "top episodes" ranking)
+    // Episode card (from episode ranking list)
     if ((item as any).season_number && (item as any).episode_number) {
       if (!tmdbKey) return;
       setState((prev) => ({ ...prev, isLoading: true }));
       try {
-        const showId: number | undefined =
-          (item as any).show_id || (item as any).tv_id;
+        const showId = (item as any).show_id || (item as any).tv_id;
         if (!showId) {
           setState((prev) => ({ ...prev, isLoading: false }));
           alert(
@@ -174,6 +174,14 @@ const App: React.FC = () => {
           (item as any).season_number,
           (item as any).episode_number
         );
+
+        // store show title on the episode object (TS-safe via any)
+        (episodeDetails as any).show_name =
+          (item as any).show_name ||
+          (item as any).series_name ||
+          item.name ||
+          item.title ||
+          '';
 
         setState((prev) => ({
           ...prev,
@@ -193,7 +201,7 @@ const App: React.FC = () => {
       return;
     }
 
-    // Normal movie / TV card
+    // Regular movie / TV card
     if (!tmdbKey) return;
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
@@ -210,7 +218,6 @@ const App: React.FC = () => {
         selectedPerson: null,
       }));
     } catch (e) {
-      console.error(e);
       setState((prev) => ({
         ...prev,
         isLoading: false,
@@ -234,6 +241,12 @@ const App: React.FC = () => {
         episodeNumber
       );
 
+      // Attach the series title from the currently open detail view
+      if (state.selectedItem) {
+        (episodeDetails as any).show_name =
+          state.selectedItem.title || state.selectedItem.name || '';
+      }
+
       setState((prev) => ({
         ...prev,
         selectedEpisode: episodeDetails,
@@ -255,7 +268,6 @@ const App: React.FC = () => {
       ...prev,
       isLoading: true,
       selectedItem: null,
-      selectedEpisode: null,
     }));
     try {
       const person = await tmdb.getPersonDetails(tmdbKey, personId);
@@ -265,7 +277,6 @@ const App: React.FC = () => {
         isLoading: false,
       }));
     } catch (e) {
-      console.error(e);
       setState((prev) => ({
         ...prev,
         isLoading: false,
@@ -325,8 +336,6 @@ const App: React.FC = () => {
       return list.filter((i) => i.genre_ids?.includes(16));
     return list.filter((i) => i.media_type === libraryFilter);
   };
-
-  const selectedEpisode = state.selectedEpisode;
 
   // ---------- RENDER ----------
   return (
@@ -703,15 +712,17 @@ const App: React.FC = () => {
         />
       )}
 
-      {selectedEpisode && (
+      {state.selectedEpisode && (
         <EpisodeDetailView
-          episode={selectedEpisode}
-          showTitle={state.selectedItem?.title || state.selectedItem?.name}
+          episode={state.selectedEpisode}
+          showTitle={(state.selectedEpisode as any).show_name}
           onClose={() =>
             setState((prev) => ({ ...prev, selectedEpisode: null }))
           }
           onRate={rateItem}
-          userRating={state.userRatings[String(selectedEpisode.id)]}
+          userRating={
+            state.userRatings[String(state.selectedEpisode.id)]
+          }
         />
       )}
 
@@ -721,8 +732,8 @@ const App: React.FC = () => {
         currentKey={tmdbKey}
         currentGeminiKey={geminiKey}
         currentOpenAIKey={openaiKey}
-        onSave={async (key, geminiKey, openaiKey) => {
-          saveKeys(key, geminiKey, openaiKey);
+        onSave={async (key, geminiKeyValue, openaiKeyValue) => {
+          saveKeys(key, geminiKeyValue, openaiKeyValue);
         }}
       />
     </div>
