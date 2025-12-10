@@ -1,6 +1,5 @@
 // src/App.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import React, { useState, useEffect } from 'react';
 import {
   Home,
   Library,
@@ -61,6 +60,28 @@ const App: React.FC = () => {
     userRatings: JSON.parse(localStorage.getItem('userRatings') || '{}'),
   });
 
+  // search suggestions visibility + click-outside handling
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const searchWrapperRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (!searchWrapperRef.current) return;
+      const target = event.target as Node;
+      if (!searchWrapperRef.current.contains(target)) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
   // Cloud sync
   const { syncing: isSyncingCloud } = useCloudSync({
     user,
@@ -87,12 +108,12 @@ const App: React.FC = () => {
     useState<'all' | 'movie' | 'tv' | 'animation'>('all');
 
   // ---------- HOME FEED ----------
-const {
-  trendingMovies,
-  trendingTv,
-  inTheaters: nowPlayingMovies, // ✅ FIXED
-  streamingNow: onAirTv,
-} = useHomeFeed(tmdbKey);
+  const {
+    trendingMovies,
+    trendingTv,
+    inTheaters: nowPlayingMovies,
+    streamingNow: onAirTv,
+  } = useHomeFeed(tmdbKey);
 
   // ---------- MEDIA SEARCH ----------
   const {
@@ -134,6 +155,7 @@ const {
         "Here's what's hot right now across movies, series, in theatres and streaming.",
       error: null,
     }));
+    setShowSuggestions(false);
   };
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -150,10 +172,12 @@ const {
       aiExplanation: searchExplanation,
       error: searchError,
     }));
+
+    setShowSuggestions(false);
   };
 
   const handleCardClick = async (item: MediaItem) => {
-    // Episode card (from episode ranking list)
+    // Episode card (from AI "top episodes" search)
     if ((item as any).season_number && (item as any).episode_number) {
       if (!tmdbKey) return;
       setState((prev) => ({ ...prev, isLoading: true }));
@@ -169,20 +193,23 @@ const {
           return;
         }
 
-        const episodeDetails = await tmdb.getEpisodeDetails(
-          tmdbKey,
-          showId,
-          (item as any).season_number,
-          (item as any).episode_number
-        );
+        // Fetch both episode + show details so we can attach series IMDb/TVDB
+        const [episodeDetails, showDetails] = await Promise.all([
+          tmdb.getEpisodeDetails(
+            tmdbKey,
+            showId,
+            (item as any).season_number,
+            (item as any).episode_number
+          ),
+          tmdb.getDetails(tmdbKey, 'tv', showId),
+        ]);
 
-        // store show title on the episode object (TS-safe via any)
         (episodeDetails as any).show_name =
-          (item as any).show_name ||
-          (item as any).series_name ||
-          item.name ||
-          item.title ||
-          '';
+          showDetails.name || showDetails.title || '';
+        (episodeDetails as any).show_imdb_id =
+          (showDetails as any).external_ids?.imdb_id ?? null;
+        (episodeDetails as any).show_tvdb_id =
+          (showDetails as any).external_ids?.tvdb_id ?? null;
 
         setState((prev) => ({
           ...prev,
@@ -202,7 +229,7 @@ const {
       return;
     }
 
-    // Regular movie / TV card
+    // Normal movie / tv click
     if (!tmdbKey) return;
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
@@ -228,58 +255,47 @@ const {
   };
 
   const handleEpisodeClick = async (
-  showId: number,
-  seasonNumber: number,
-  episodeNumber: number
-) => {
-  if (!tmdbKey) return;
-  setState((prev) => ({ ...prev, isLoading: true }));
+    showId: number,
+    seasonNumber: number,
+    episodeNumber: number
+  ) => {
+    if (!tmdbKey) return;
+    setState((prev) => ({ ...prev, isLoading: true }));
+    try {
+      const episodeDetails = await tmdb.getEpisodeDetails(
+        tmdbKey,
+        showId,
+        seasonNumber,
+        episodeNumber
+      );
 
-  try {
-    const episodeDetails = await tmdb.getEpisodeDetails(
-      tmdbKey,
-      showId,
-      seasonNumber,
-      episodeNumber
-    );
-
-    // Take series title + IMDb ID from the currently selected show
-    let showName: string | undefined;
-    let showImdbId: string | undefined;
-
-    if (state.selectedItem && state.selectedItem.media_type === 'tv') {
-      showName = state.selectedItem.name || state.selectedItem.title || undefined;
-
-      const externalIds = (state.selectedItem as any).external_ids;
-      if (externalIds && typeof externalIds.imdb_id === 'string') {
-        showImdbId = externalIds.imdb_id;
+      // Attach show metadata (for episode deep link)
+      if (state.selectedItem) {
+        const show: any = state.selectedItem;
+        (episodeDetails as any).show_name =
+          show.title || show.name || '';
+        (episodeDetails as any).show_imdb_id =
+          show.external_ids?.imdb_id ?? null;
+        (episodeDetails as any).show_tvdb_id =
+          show.external_ids?.tvdb_id ?? null;
       }
+
+      setState((prev) => ({
+        ...prev,
+        selectedEpisode: episodeDetails,
+        isLoading: false,
+      }));
+    } catch (err) {
+      console.error(err);
+      setState((prev) => ({
+        ...prev,
+        isLoading: false,
+        error: 'Could not load episode details.',
+      }));
     }
-
-    // Enrich the episode object with show_name + show_imdb_id
-    const enrichedEpisode: any = {
-      ...episodeDetails,
-      show_name: showName,
-      show_imdb_id: showImdbId,
-    };
-
-    setState((prev) => ({
-      ...prev,
-      selectedEpisode: enrichedEpisode,
-      isLoading: false,
-    }));
-  } catch (err) {
-    console.error(err);
-    setState((prev) => ({
-      ...prev,
-      isLoading: false,
-      error: 'Could not load episode details.',
-    }));
-  }
-};
+  };
 
   const handleCastClick = async (personId: number) => {
-    if (!tmdbKey) return;
     setState((prev) => ({
       ...prev,
       isLoading: true,
@@ -328,6 +344,7 @@ const {
       aiExplanation: null,
       error: null,
     }));
+    setShowSuggestions(false);
   };
 
   // ---------- HELPERS ----------
@@ -373,72 +390,88 @@ const {
           </div>
 
           {/* Search Bar + Autocomplete */}
-          <form
-            onSubmit={handleSearch}
+          <div
+            ref={searchWrapperRef}
             className="flex-1 max-w-2xl relative group"
           >
-            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-              <Sparkles
-                className={`w-5 h-5 transition-colors ${
-                  isSearching
-                    ? 'animate-pulse text-cyan-400'
-                    : 'text-slate-500 group-focus-within:text-cyan-400'
-                }`}
-              />
-            </div>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search titles or ask things like 'Top 20 sci-fi movies like Interstellar'"
-              className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
-            />
-            {isSearching && (
-              <div className="absolute inset-y-0 right-4 flex items-center">
-                <Loader2 className="animate-spin text-cyan-500" size={20} />
+            <form onSubmit={handleSearch} className="relative">
+              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+                <Sparkles
+                  className={`w-5 h-5 transition-colors ${
+                    isSearching
+                      ? 'animate-pulse text-cyan-400'
+                      : 'text-slate-500 group-focus-within:text-cyan-400'
+                  }`}
+                />
               </div>
-            )}
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSearchQuery(val);
+                  if (val.trim()) {
+                    setShowSuggestions(true);
+                  } else {
+                    setShowSuggestions(false);
+                  }
+                }}
+                placeholder="Search titles or ask things like 'Top 20 sci-fi movies like Interstellar'"
+                className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
+              />
+              {isSearching && (
+                <div className="absolute inset-y-0 right-4 flex items-center">
+                  <Loader2 className="animate-spin text-cyan-500" size={20} />
+                </div>
+              )}
 
-            {/* Autocomplete dropdown */}
-            {suggestions.length > 0 && searchQuery.trim() && (
-              <div className="absolute mt-2 left-0 right-0 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 max-h-80 overflow-y-auto">
-                {suggestions.map((sug, idx) => {
-                  const title = sug.title || sug.name;
-                  const date =
-                    sug.release_date || sug.first_air_date || '';
-                  const year = date ? new Date(date).getFullYear() : '';
-                  return (
-                    <button
-                      key={`${sug.id}-${idx}`}
-                      type="button"
-                      onClick={() => handleSuggestionClick(sug)}
-                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-800 border-b border-slate-800/60 last:border-b-0"
-                    >
-                      <div className="flex flex-col items-start">
-                        <span className="text-slate-100">{title}</span>
-                        <span className="text-xs text-slate-500">
-                          {(sug.media_type || '').toUpperCase()}{' '}
-                          {year && `• ${year}`}
-                        </span>
+              {/* Autocomplete dropdown */}
+              {showSuggestions &&
+                suggestions.length > 0 &&
+                searchQuery.trim() && (
+                  <div className="absolute mt-2 left-0 right-0 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 max-h-80 overflow-y-auto">
+                    {suggestions.map((sug, idx) => {
+                      const title = sug.title || sug.name;
+                      const date =
+                        sug.release_date || sug.first_air_date || '';
+                      const year = date
+                        ? new Date(date).getFullYear()
+                        : '';
+                      return (
+                        <button
+                          key={`${sug.id}-${idx}`}
+                          type="button"
+                          onClick={() => handleSuggestionClick(sug)}
+                          className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-800 border-b border-slate-800/60 last:border-b-0"
+                        >
+                          <div className="flex flex-col items-start">
+                            <span className="text-slate-100">
+                              {title}
+                            </span>
+                            <span className="text-xs text-slate-500">
+                              {(sug.media_type || '').toUpperCase()}{' '}
+                              {year && `• ${year}`}
+                            </span>
+                          </div>
+                          {typeof sug.vote_average === 'number' && (
+                            <span className="text-xs text-amber-300 flex items-center gap-1">
+                              <Star size={12} />
+                              {sug.vote_average.toFixed(1)}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                    {isSuggestLoading && (
+                      <div className="px-3 py-2 text-xs text-slate-400 flex items-center gap-2">
+                        <Loader2 size={14} className="animate-spin" />
+                        Updating suggestions…
                       </div>
-                      {typeof sug.vote_average === 'number' && (
-                        <span className="text-xs text-amber-300 flex items-center gap-1">
-                          <Star size={12} />
-                          {sug.vote_average.toFixed(1)}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-                {isSuggestLoading && (
-                  <div className="px-3 py-2 text-xs text-slate-400 flex items-center gap-2">
-                    <Loader2 size={14} className="animate-spin" />
-                    Updating suggestions…
+                    )}
                   </div>
                 )}
-              </div>
-            )}
-          </form>
+            </form>
+          </div>
 
           {/* Right actions */}
           <div className="flex items-center gap-3">
@@ -644,6 +677,7 @@ const {
               Search Results
             </h2>
             {searchResults.length > 0 ? (
+              // ranking numbers ONLY when view === 'search'
               renderGrid(searchResults, true)
             ) : (
               !isSearching && (
@@ -736,9 +770,7 @@ const {
             setState((prev) => ({ ...prev, selectedEpisode: null }))
           }
           onRate={rateItem}
-          userRating={
-            state.userRatings[String(state.selectedEpisode.id)]
-          }
+          userRating={state.userRatings[String(state.selectedEpisode.id)]}
         />
       )}
 
@@ -748,8 +780,8 @@ const {
         currentKey={tmdbKey}
         currentGeminiKey={geminiKey}
         currentOpenAIKey={openaiKey}
-        onSave={async (key, geminiKeyValue, openaiKeyValue) => {
-          saveKeys(key, geminiKeyValue, openaiKeyValue);
+        onSave={async (key, geminiKey, openaiKey) => {
+          saveKeys(key, geminiKey, openaiKey);
         }}
       />
     </div>
