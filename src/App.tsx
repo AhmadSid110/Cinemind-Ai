@@ -86,12 +86,12 @@ const App: React.FC = () => {
     useState<'all' | 'movie' | 'tv' | 'animation'>('all');
 
   // ---------- HOME FEED ----------
-  const {
-    trendingMovies,
-    trendingTv,
-    inTheatres: nowPlayingMovies,
-    streamingNow: onAirTv,
-  } = useHomeFeed(tmdbKey);
+const {
+  trendingMovies,
+  trendingTv,
+  inTheaters: nowPlayingMovies, // ✅ FIXED
+  streamingNow: onAirTv,
+} = useHomeFeed(tmdbKey);
 
   // ---------- MEDIA SEARCH ----------
   const {
