@@ -227,40 +227,55 @@ const {
   };
 
   const handleEpisodeClick = async (
-    showId: number,
-    seasonNumber: number,
-    episodeNumber: number
-  ) => {
-    if (!tmdbKey) return;
-    setState((prev) => ({ ...prev, isLoading: true }));
-    try {
-      const episodeDetails = await tmdb.getEpisodeDetails(
-        tmdbKey,
-        showId,
-        seasonNumber,
-        episodeNumber
-      );
+  showId: number,
+  seasonNumber: number,
+  episodeNumber: number
+) => {
+  if (!tmdbKey) return;
+  setState((prev) => ({ ...prev, isLoading: true }));
 
-      // Attach the series title from the currently open detail view
-      if (state.selectedItem) {
-        (episodeDetails as any).show_name =
-          state.selectedItem.title || state.selectedItem.name || '';
+  try {
+    const episodeDetails = await tmdb.getEpisodeDetails(
+      tmdbKey,
+      showId,
+      seasonNumber,
+      episodeNumber
+    );
+
+    // Take series title + IMDb ID from the currently selected show
+    let showName: string | undefined;
+    let showImdbId: string | undefined;
+
+    if (state.selectedItem && state.selectedItem.media_type === 'tv') {
+      showName = state.selectedItem.name || state.selectedItem.title || undefined;
+
+      const externalIds = (state.selectedItem as any).external_ids;
+      if (externalIds && typeof externalIds.imdb_id === 'string') {
+        showImdbId = externalIds.imdb_id;
       }
-
-      setState((prev) => ({
-        ...prev,
-        selectedEpisode: episodeDetails,
-        isLoading: false,
-      }));
-    } catch (err) {
-      console.error(err);
-      setState((prev) => ({
-        ...prev,
-        isLoading: false,
-        error: 'Could not load episode details.',
-      }));
     }
-  };
+
+    // Enrich the episode object with show_name + show_imdb_id
+    const enrichedEpisode: any = {
+      ...episodeDetails,
+      show_name: showName,
+      show_imdb_id: showImdbId,
+    };
+
+    setState((prev) => ({
+      ...prev,
+      selectedEpisode: enrichedEpisode,
+      isLoading: false,
+    }));
+  } catch (err) {
+    console.error(err);
+    setState((prev) => ({
+      ...prev,
+      isLoading: false,
+      error: 'Could not load episode details.',
+    }));
+  }
+};
 
   const handleCastClick = async (personId: number) => {
     if (!tmdbKey) return;
