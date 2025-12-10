@@ -2,10 +2,17 @@
 import React from 'react';
 import { X, Star, Calendar, Tv } from 'lucide-react';
 import { EpisodeDetail, Review } from '../types';
-import { buildStremioEpisodeUrl } from '../utils/stremio';
+import {
+  buildStremioEpisodeUrl,
+  StremioEpisodeContext,
+} from '../utils/stremio';
 
 interface EpisodeDetailViewProps {
-  episode: EpisodeDetail;
+  episode: EpisodeDetail & {
+    // extra fields we attach in App.tsx
+    show_name?: string;
+    show_imdb_id?: string;
+  };
   showTitle?: string;
   onClose: () => void;
   onRate?: (id: string, rating: number) => void;
@@ -30,35 +37,28 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
       ? episode.vote_average.toFixed(1)
       : 'N/A';
 
-  // ---------- STREMIO EPISODE DEEPLINK ----------
-  // We prefer the SERIES ids (attached in App.tsx), and only fall back to episode ids.
-  const rawExternalIds: any = (episode as any).external_ids || {};
+  // Use the SERIES IMDb id we attached in App.tsx
+  const seriesImdbId =
+    typeof episode.show_imdb_id === 'string' &&
+    episode.show_imdb_id.trim().length > 0
+      ? episode.show_imdb_id.trim()
+      : undefined;
 
-  const seriesImdbId: string | undefined =
-    (episode as any).show_imdb_id ||
-    rawExternalIds.show_imdb_id ||
-    rawExternalIds.imdb_id ||
-    undefined;
+  const resolvedShowTitle =
+    showTitle || episode.show_name || episode.name || '';
 
-  const seriesTvdbId: number | undefined =
-    (episode as any).show_tvdb_id ??
-    rawExternalIds.show_tvdb_id ??
-    (typeof rawExternalIds.tvdb_id === 'number'
-      ? rawExternalIds.tvdb_id
-      : undefined);
-
-  const effectiveTitle =
-    showTitle || (episode as any).show_name || episode.name || '';
-
-  const stremioEpisodeUrl = buildStremioEpisodeUrl({
-    title: effectiveTitle,
+  // Build Stremio deeplink for this episode
+  const stremioCtx: StremioEpisodeContext = {
+    title: resolvedShowTitle,
     year: airYear,
     type: 'series',
     imdbId: seriesImdbId,
-    tvdbId: seriesTvdbId,
+    tvdbId: undefined,
     season: episode.season_number,
     episode: episode.episode_number,
-  });
+  };
+
+  const stremioEpisodeUrl = buildStremioEpisodeUrl(stremioCtx);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-2">
@@ -86,10 +86,10 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
 
             <div className="absolute bottom-4 left-4 right-4 space-y-2">
-              {effectiveTitle && (
+              {resolvedShowTitle && (
                 <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-black/50 text-xs text-slate-200">
                   <Tv size={14} />
-                  <span className="font-semibold">{effectiveTitle}</span>
+                  <span className="font-semibold">{resolvedShowTitle}</span>
                 </div>
               )}
               <h2 className="text-xl md:text-2xl font-bold text-white">
@@ -183,7 +183,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
             )}
 
             {/* TMDB Reviews */}
-            {reviews.length > 0 && (
+            {reviews.length > 0 ? (
               <div className="mt-2 space-y-3">
                 <h3 className="text-sm font-semibold text-slate-200">
                   TMDB Reviews
@@ -217,9 +217,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
                   ))}
                 </div>
               </div>
-            )}
-
-            {reviews.length === 0 && (
+            ) : (
               <p className="text-xs text-slate-500">
                 No TMDB reviews available for this episode yet.
               </p>
