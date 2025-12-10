@@ -8,11 +8,7 @@ import {
 } from '../utils/stremio';
 
 interface EpisodeDetailViewProps {
-  episode: EpisodeDetail & {
-    // extra fields we attach in App.tsx
-    show_name?: string;
-    show_imdb_id?: string;
-  };
+  episode: EpisodeDetail;
   showTitle?: string;
   onClose: () => void;
   onRate?: (id: string, rating: number) => void;
@@ -37,28 +33,25 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
       ? episode.vote_average.toFixed(1)
       : 'N/A';
 
-  // Use the SERIES IMDb id we attached in App.tsx
-  const seriesImdbId =
-    typeof episode.show_imdb_id === 'string' &&
-    episode.show_imdb_id.trim().length > 0
-      ? episode.show_imdb_id.trim()
+  // Series-level IDs injected in App.tsx
+  const seriesImdbId: string | undefined =
+    (episode as any).show_imdb_id || undefined;
+  const seriesTvdbId: number | undefined =
+    typeof (episode as any).show_tvdb_id === 'number'
+      ? (episode as any).show_tvdb_id
       : undefined;
 
-  const resolvedShowTitle =
-    showTitle || episode.show_name || episode.name || '';
-
-  // Build Stremio deeplink for this episode
-  const stremioCtx: StremioEpisodeContext = {
-    title: resolvedShowTitle,
+  const stremioEpisodeCtx: StremioEpisodeContext = {
+    title: showTitle || episode.name || '',
     year: airYear,
     type: 'series',
     imdbId: seriesImdbId,
-    tvdbId: undefined,
+    tvdbId: seriesTvdbId,
     season: episode.season_number,
     episode: episode.episode_number,
   };
 
-  const stremioEpisodeUrl = buildStremioEpisodeUrl(stremioCtx);
+  const stremioEpisodeUrl = buildStremioEpisodeUrl(stremioEpisodeCtx);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-2">
@@ -86,10 +79,10 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
 
             <div className="absolute bottom-4 left-4 right-4 space-y-2">
-              {resolvedShowTitle && (
+              {showTitle && (
                 <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-black/50 text-xs text-slate-200">
                   <Tv size={14} />
-                  <span className="font-semibold">{resolvedShowTitle}</span>
+                  <span className="font-semibold">{showTitle}</span>
                 </div>
               )}
               <h2 className="text-xl md:text-2xl font-bold text-white">
@@ -158,32 +151,34 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
                   Your Rating
                 </h3>
                 <div className="flex items-center gap-1">
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                    <button
-                      key={n}
-                      onClick={() => onRate(String(episode.id), n)}
-                      className={`p-1 ${
-                        userRating && userRating >= n
-                          ? 'text-cyan-400'
-                          : 'text-slate-600'
-                      }`}
-                    >
-                      <Star
-                        size={16}
-                        className={
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map(
+                    (n) => (
+                      <button
+                        key={n}
+                        onClick={() => onRate(String(episode.id), n)}
+                        className={`p-1 ${
                           userRating && userRating >= n
-                            ? 'fill-cyan-400'
-                            : 'fill-slate-800'
-                        }
-                      />
-                    </button>
-                  ))}
+                            ? 'text-cyan-400'
+                            : 'text-slate-600'
+                        }`}
+                      >
+                        <Star
+                          size={16}
+                          className={
+                            userRating && userRating >= n
+                              ? 'fill-cyan-400'
+                              : 'fill-slate-800'
+                          }
+                        />
+                      </button>
+                    )
+                  )}
                 </div>
               </div>
             )}
 
             {/* TMDB Reviews */}
-            {reviews.length > 0 ? (
+            {reviews.length > 0 && (
               <div className="mt-2 space-y-3">
                 <h3 className="text-sm font-semibold text-slate-200">
                   TMDB Reviews
@@ -200,7 +195,8 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
                             rev.author_details.username ||
                             'User'}
                         </span>
-                        {typeof rev.author_details?.rating === 'number' && (
+                        {typeof rev.author_details?.rating ===
+                          'number' && (
                           <span className="inline-flex items-center gap-1 text-xs text-amber-300">
                             <Star
                               size={12}
@@ -217,7 +213,9 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
                   ))}
                 </div>
               </div>
-            ) : (
+            )}
+
+            {reviews.length === 0 && (
               <p className="text-xs text-slate-500">
                 No TMDB reviews available for this episode yet.
               </p>
