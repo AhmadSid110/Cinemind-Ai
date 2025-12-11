@@ -41,7 +41,7 @@ export function useApiKeys(user: any) {
     cloudTmdbKey: string,
     cloudGeminiKey: string,
     cloudOpenaiKey: string,
-    cloudOmdbKey?: string
+    cloudOmdbKey: string
   ) => {
     if (cloudTmdbKey) {
       setTmdbKey(cloudTmdbKey);
