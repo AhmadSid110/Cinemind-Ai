@@ -21,7 +21,7 @@ const DEFAULT_TTL_MS = 1000 * 60 * 60 * 24; // 24 hours
 const MAX_CONCURRENT = 3;
 const FETCH_DELAY_MS = 350; // small delay between queued calls
 
-export function useRatingsCache({ omdbApiKey, ttlMs = DEFAULT_TTL_MS }: { omdbApiKey?: string | null; ttlMs?: number }) {
+export function useRatingsCache({ tmdbApiKey, omdbApiKey, ttlMs = DEFAULT_TTL_MS }: { tmdbApiKey: string; omdbApiKey?: string | null; ttlMs?: number }) {
   const [map, setMap] = useState<RatingsMap>(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -94,7 +94,7 @@ export function useRatingsCache({ omdbApiKey, ttlMs = DEFAULT_TTL_MS }: { omdbAp
       enqueue(async () => {
         try {
           // 1) get external ids (IMDB / TVDB)
-          const ext = await tmdb.getExternalIds(mediaType, tmdbId); // added helper in tmdbService (see below)
+          const ext = await tmdb.getExternalIds(tmdbApiKey, mediaType, tmdbId);
           const imdbId = ext?.imdb_id || null;
           if (!imdbId || !omdbApiKey) {
             // store minimal record (timestamp) to avoid repeated failing calls

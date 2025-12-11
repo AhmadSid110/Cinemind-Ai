@@ -6,7 +6,8 @@ interface SettingsModalProps {
   currentKey: string;
   currentGeminiKey: string;
   currentOpenAIKey: string;
-  onSave: (tmdbKey: string, geminiKey: string, openaiKey: string) => void;
+  currentOmdbKey: string;
+  onSave: (tmdbKey: string, geminiKey: string, openaiKey: string, omdbKey: string) => void;
   onClose: () => void;
   isOpen: boolean;
 }
@@ -15,6 +16,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   currentKey,
   currentGeminiKey,
   currentOpenAIKey,
+  currentOmdbKey,
   onSave,
   onClose,
   isOpen,
@@ -23,6 +25,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [keyInput, setKeyInput] = useState(currentKey || '');
   const [geminiKeyInput, setGeminiKeyInput] = useState(currentGeminiKey || '');
   const [openaiKeyInput, setOpenaiKeyInput] = useState(currentOpenAIKey || '');
+  const [omdbKeyInput, setOmdbKeyInput] = useState(currentOmdbKey || '');
   const [status, setStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
 
   // …and kept in sync if props change (e.g. when Firebase finishes loading)
@@ -38,12 +41,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     setOpenaiKeyInput(currentOpenAIKey || '');
   }, [currentOpenAIKey]);
 
+  useEffect(() => {
+    setOmdbKeyInput(currentOmdbKey || '');
+  }, [currentOmdbKey]);
+
   if (!isOpen) return null;
 
   const handleSave = async () => {
     const trimmedTmdb = keyInput.trim();
     const trimmedGemini = geminiKeyInput.trim();
     const trimmedOpenAI = openaiKeyInput.trim();
+    const trimmedOmdb = omdbKeyInput.trim();
 
     if (!trimmedTmdb) {
       setStatus('invalid');
@@ -58,7 +66,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       if (isValid) {
         setStatus('valid');
         // Let parent (App.tsx) update state + Firebase
-        onSave(trimmedTmdb, trimmedGemini, trimmedOpenAI);
+        onSave(trimmedTmdb, trimmedGemini, trimmedOpenAI, trimmedOmdb);
 
         // Close after a short success flash
         setTimeout(() => {
@@ -169,6 +177,36 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               className="text-emerald-400 hover:underline"
             >
               OpenAI Platform
+            </a>
+            .
+          </p>
+        </div>
+
+        {/* OMDb Section */}
+        <div className="space-y-4 mb-6 pt-4 border-t border-slate-800">
+          <div>
+            <label className="text-xs font-bold uppercase text-slate-500 block mb-1 flex items-center gap-1">
+              <Sparkles size={12} /> OMDb API Key (Optional)
+            </label>
+            <input
+              type="text"
+              value={omdbKeyInput}
+              onChange={(e) => {
+                setOmdbKeyInput(e.target.value);
+              }}
+              placeholder="Enter OMDb API key..."
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-amber-500 transition font-mono text-xs"
+            />
+          </div>
+          <p className="text-slate-500 text-xs">
+            Optional for IMDb, Metacritic, and Rotten Tomatoes ratings. Get it from{' '}
+            <a
+              href="https://www.omdbapi.com/apikey.aspx"
+              target="_blank"
+              rel="noreferrer"
+              className="text-amber-400 hover:underline"
+            >
+              OMDb API
             </a>
             .
           </p>

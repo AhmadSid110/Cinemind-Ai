@@ -13,6 +13,7 @@ interface EpisodeDetailViewProps {
   onClose: () => void;
   onRate?: (id: string, rating: number) => void;
   userRating?: number;
+  ratingsCache?: any;
 }
 
 const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
@@ -21,6 +22,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
   onClose,
   onRate,
   userRating,
+  ratingsCache,
 }) => {
   const airYear = episode.air_date
     ? new Date(episode.air_date).getFullYear()

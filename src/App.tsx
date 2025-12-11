@@ -34,6 +34,7 @@ import { useApiKeys } from './hooks/useApiKeys';
 import { useLibrary } from './hooks/useLibrary';
 import { useHomeFeed } from './hooks/useHomeFeed';
 import { useMediaSearch } from './hooks/useMediaSearch';
+import { useRatingsCache } from './hooks/useRatingsCache';
 
 const App: React.FC = () => {
   // ---------- HOOKS ----------
@@ -42,6 +43,7 @@ const App: React.FC = () => {
     tmdbKey,
     geminiKey,
     openaiKey,
+    omdbKey,
     saveKeys,
     updateKeysFromCloud,
   } = useApiKeys(user);
@@ -90,6 +92,7 @@ const App: React.FC = () => {
     tmdbKey,
     geminiKey,
     openaiKey,
+    omdbKey,
     updateKeysFromCloud,
   });
 
@@ -115,6 +118,29 @@ const App: React.FC = () => {
     streamingNow: onAirTv,
   } = useHomeFeed(tmdbKey);
 
+  // ---------- RATINGS CACHE ----------
+  const ratingsCache = useRatingsCache({
+    tmdbApiKey: tmdbKey,
+    omdbApiKey: omdbKey,
+    ttlMs: 1000 * 60 * 60 * 24, // 24 hours
+  });
+
+  // ---------- FETCH RATINGS FOR HOME FEED ----------
+  useEffect(() => {
+    if (!tmdbKey || !omdbKey) return;
+    
+    const allItems = [
+      ...trendingMovies,
+      ...trendingTv,
+      ...nowPlayingMovies,
+      ...onAirTv,
+    ].filter(item => item.id && (item.media_type === 'movie' || item.media_type === 'tv'));
+
+    if (allItems.length > 0) {
+      ratingsCache.ensureForList(allItems, 20); // Limit to 20 concurrent to avoid overwhelming API
+    }
+  }, [trendingMovies, trendingTv, nowPlayingMovies, onAirTv, tmdbKey, omdbKey, ratingsCache]);
+
   // ---------- MEDIA SEARCH ----------
   const {
     searchQuery,
@@ -134,6 +160,19 @@ const App: React.FC = () => {
     trendingMovies,
     trendingTv,
   });
+
+  // ---------- FETCH RATINGS FOR SEARCH RESULTS ----------
+  useEffect(() => {
+    if (!tmdbKey || !omdbKey || searchResults.length === 0) return;
+    
+    const items = searchResults.filter(
+      item => item.id && (item.media_type === 'movie' || item.media_type === 'tv')
+    );
+
+    if (items.length > 0) {
+      ratingsCache.ensureForList(items, 20);
+    }
+  }, [searchResults, tmdbKey, omdbKey, ratingsCache]);
 
   // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
@@ -356,6 +395,7 @@ const App: React.FC = () => {
           item={item}
           onClick={handleCardClick}
           rank={showRank ? idx + 1 : undefined}
+          ratingsCache={ratingsCache}
         />
       ))}
     </div>
@@ -643,6 +683,7 @@ const App: React.FC = () => {
               onItemClick={handleCardClick}
               accentColor="cyan"
               emptyMessage="No trending movies available right now."
+              ratingsCache={ratingsCache}
             />
 
             <HorizontalCarousel
@@ -651,6 +692,7 @@ const App: React.FC = () => {
               onItemClick={handleCardClick}
               accentColor="fuchsia"
               emptyMessage="No trending series available right now."
+              ratingsCache={ratingsCache}
             />
 
             <HorizontalCarousel
@@ -659,6 +701,7 @@ const App: React.FC = () => {
               onItemClick={handleCardClick}
               accentColor="emerald"
               emptyMessage='No "Now Playing" movies available for your region.'
+              ratingsCache={ratingsCache}
             />
 
             <HorizontalCarousel
@@ -667,6 +710,7 @@ const App: React.FC = () => {
               onItemClick={handleCardClick}
               accentColor="indigo"
               emptyMessage='No "On The Air" TV data available right now.'
+              ratingsCache={ratingsCache}
             />
           </div>
         ) : (
@@ -749,6 +793,7 @@ const App: React.FC = () => {
           onEpisodeClick={handleEpisodeClick}
           userRatings={state.userRatings}
           onRate={rateItem}
+          ratingsCache={ratingsCache}
         />
       )}
 
@@ -771,6 +816,7 @@ const App: React.FC = () => {
           }
           onRate={rateItem}
           userRating={state.userRatings[String(state.selectedEpisode.id)]}
+          ratingsCache={ratingsCache}
         />
       )}
 
@@ -780,8 +826,9 @@ const App: React.FC = () => {
         currentKey={tmdbKey}
         currentGeminiKey={geminiKey}
         currentOpenAIKey={openaiKey}
-        onSave={async (key, geminiKey, openaiKey) => {
-          saveKeys(key, geminiKey, openaiKey);
+        currentOmdbKey={omdbKey}
+        onSave={async (key, geminiKey, openaiKey, omdbKey) => {
+          saveKeys(key, geminiKey, openaiKey, omdbKey);
         }}
       />
     </div>

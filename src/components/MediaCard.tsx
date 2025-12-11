@@ -7,9 +7,11 @@ interface MediaCardProps {
   onClick: (item: MediaItem) => void;
   /** Optional rank for search results (#1, #2, ...). */
   rank?: number;
+  /** Optional ratings cache hook result */
+  ratingsCache?: any;
 }
 
-const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank }) => {
+const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank, ratingsCache }) => {
   const imageUrl = item.poster_path
     ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
     : item.still_path
@@ -21,9 +23,19 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank }) => {
   const year = date ? new Date(date).getFullYear() : 'N/A';
   const isEpisode = !!item.episode_number;
 
-  const rating = item.vote_average
-    ? Number(item.vote_average.toFixed(1))
+  // Get cached rating if available
+  const cachedRating = ratingsCache && item.media_type && item.media_type !== 'person'
+    ? ratingsCache.getCached(item.media_type, item.id)
     : null;
+
+  // Prefer IMDb rating from OMDb, fallback to TMDB
+  const displayRating = cachedRating?.imdbRating
+    ? parseFloat(cachedRating.imdbRating)
+    : item.vote_average
+      ? Number(item.vote_average.toFixed(1))
+      : null;
+  
+  const ratingSource = cachedRating?.imdbRating ? 'imdb' : 'tmdb';
 
   return (
     <div
@@ -65,10 +77,14 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank }) => {
         </div>
 
         {/* RATING BADGE – ALWAYS VISIBLE */}
-        {rating !== null && (
-          <div className="absolute bottom-2 left-2 z-20 bg-black/80 backdrop-blur-md text-cyan-300 text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.45)]">
+        {displayRating !== null && (
+          <div className={`absolute bottom-2 left-2 z-20 backdrop-blur-md text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 shadow-[0_0_12px_rgba(6,182,212,0.45)] ${
+            ratingSource === 'imdb' 
+              ? 'bg-amber-500/90 text-slate-900 border border-amber-300/60' 
+              : 'bg-black/80 text-cyan-300 border border-cyan-500/40'
+          }`}>
             <Star size={12} fill="currentColor" />
-            <span>{rating}</span>
+            <span>{displayRating.toFixed(1)}</span>
           </div>
         )}
 
@@ -97,7 +113,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank }) => {
 
           {isEpisode && (
             <span className="text-slate-400 text-[10px]">
-              Episode • {rating !== null ? `${rating}/10` : 'NR'}
+              Episode • {displayRating !== null ? `${displayRating.toFixed(1)}/10` : 'NR'}
             </span>
           )}
         </div>
