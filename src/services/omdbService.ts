@@ -32,37 +32,36 @@ interface CacheEntry {
 // In-memory cache for fast access during session
 let inMemoryCache: Record<string, CacheEntry> = {};
 
-function loadCache(): Record<string, CacheEntry> {
+function loadCache(): void {
   try {
     const stored = localStorage.getItem(CACHE_KEY);
-    if (!stored) return {};
-    const parsed = JSON.parse(stored);
-    inMemoryCache = parsed;
-    return parsed;
+    if (!stored) {
+      inMemoryCache = {};
+      return;
+    }
+    inMemoryCache = JSON.parse(stored);
   } catch {
-    return {};
+    inMemoryCache = {};
   }
 }
 
-function saveCache(cache: Record<string, CacheEntry>) {
+function saveCache() {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-    inMemoryCache = cache;
+    localStorage.setItem(CACHE_KEY, JSON.stringify(inMemoryCache));
   } catch (err) {
     console.warn('Failed to save OMDb cache:', err);
   }
 }
 
 function getCached(key: string): OmdbResult | null {
-  const cache = inMemoryCache;
-  const entry = cache[key];
+  const entry = inMemoryCache[key];
   if (!entry) return null;
   
   const age = Date.now() - entry.ts;
   if (age > CACHE_TTL_MS) {
     // Expired, remove it
-    delete cache[key];
-    saveCache(cache);
+    delete inMemoryCache[key];
+    saveCache();
     return null;
   }
   
@@ -70,22 +69,40 @@ function getCached(key: string): OmdbResult | null {
 }
 
 function setCached(key: string, data: OmdbResult | null) {
-  const cache = loadCache();
-  cache[key] = { ts: Date.now(), data };
-  saveCache(cache);
+  inMemoryCache[key] = { ts: Date.now(), data };
+  saveCache();
 }
 
-// Concurrency control
+// Concurrency control with proper synchronization
 let activeRequests = 0;
 const requestQueue: Array<() => void> = [];
+let queueLock = false;
 
-async function throttledFetch(url: string, retries = 0): Promise<Response> {
-  // Wait for slot
+async function acquireSlot(): Promise<void> {
+  // Critical section: check and increment atomically
+  while (queueLock) {
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  queueLock = true;
+  
   if (activeRequests >= MAX_CONCURRENT) {
+    queueLock = false;
     await new Promise<void>(resolve => requestQueue.push(resolve));
+    return acquireSlot(); // Try again after wakeup
   }
   
   activeRequests++;
+  queueLock = false;
+}
+
+function releaseSlot() {
+  activeRequests--;
+  const next = requestQueue.shift();
+  if (next) next();
+}
+
+async function throttledFetch(url: string, retries = 0): Promise<Response> {
+  await acquireSlot();
   
   try {
     const controller = new AbortController();
@@ -106,10 +123,7 @@ async function throttledFetch(url: string, retries = 0): Promise<Response> {
     }
     throw err;
   } finally {
-    activeRequests--;
-    // Process queue
-    const next = requestQueue.shift();
-    if (next) next();
+    releaseSlot();
   }
 }
 
