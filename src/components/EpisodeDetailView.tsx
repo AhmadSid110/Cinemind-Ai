@@ -1,5 +1,5 @@
 // src/components/EpisodeDetailView.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, Star, Calendar, Tv } from 'lucide-react';
 import { EpisodeDetail, Review } from '../types';
 import {
@@ -13,7 +13,7 @@ interface EpisodeDetailViewProps {
   onClose: () => void;
   onRate?: (id: string, rating: number) => void;
   userRating?: number;
-  ratingsCache?: any; // useRatingsCache instance
+  ratingsCache?: any; // improved: support getEpisodeCached + refreshEpisode
   useOmdbRatings?: boolean;
 }
 
@@ -28,14 +28,14 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
 }) => {
   const airYear = episode.air_date ? new Date(episode.air_date).getFullYear() : undefined;
   const reviews: Review[] = episode.reviews?.results || [];
+
+  // TMDB rating for the episode (still show for "TMDB" badge)
   const tmdbRating = typeof episode.vote_average === 'number' ? episode.vote_average.toFixed(1) : 'N/A';
 
-  // Series-level IDs (should be injected by App.tsx when fetching episode)
-  const seriesImdbId: string | undefined = (episode as any).show_imdb_id ?? undefined;
-  const seriesTvdbId: number | undefined =
-    typeof (episode as any).show_tvdb_id === 'number' ? (episode as any).show_tvdb_id : undefined;
-  // Prefer tmdb show id for episode cache key if available
-  const tmdbShowId: number | undefined = (episode as any).show_id ?? (episode as any).tv_id ?? undefined;
+  // Series-level IDs should be injected into the episode object by App.tsx:
+  // episode.show_imdb_id, episode.show_tvdb_id, episode.show_id
+  const seriesImdbId: string | undefined = (episode as any).show_imdb_id || undefined;
+  const seriesTvdbId: number | undefined = typeof (episode as any).show_tvdb_id === 'number' ? (episode as any).show_tvdb_id : undefined;
 
   const stremioEpisodeCtx: StremioEpisodeContext = {
     title: showTitle || episode.name || '',
@@ -49,48 +49,169 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
 
   const stremioEpisodeUrl = buildStremioEpisodeUrl(stremioEpisodeCtx);
 
-  // Episode-level OMDb rating (from ratingsCache)
-  const [episodeRatingLoading, setEpisodeRatingLoading] = useState(false);
-  const episodeCacheKeyId = useMemo(() => {
-    // build cache id used by cache (prefer tmdbShowId else fallback to seriesImdbId)
-    return tmdbShowId ?? seriesImdbId ?? episode.id;
-  }, [tmdbShowId, seriesImdbId, episode.id]);
+  // ---- OMDb episode rating state ----
+  const [episodeOmdb, setEpisodeOmdb] = useState<{
+    imdbRating?: string | null;
+    imdbVotes?: string | null;
+    metascore?: string | null;
+    rottenTomatoes?: string | null;
+  } | null>(null);
 
-  // cachedRating could be episode-specific or fallback to series-level
-  const cachedEpisodeRating = useMemo(() => {
-    if (!ratingsCache) return null;
-    // 1) check episode-level by tmdbShowId/imdb + season/episode
-    if (tmdbShowId) {
-      return ratingsCache.getCachedEpisode(tmdbShowId, episode.season_number, episode.episode_number) ??
-        ratingsCache.getCached('tv', tmdbShowId);
-    }
-    if (seriesImdbId) {
-      // fallback: cache keyed by imdb string - we used same function in cache (episodeKey supports string)
-      return ratingsCache.getCachedEpisode(seriesImdbId, episode.season_number, episode.episode_number) ??
-        null;
-    }
-    return null;
-  }, [ratingsCache, tmdbShowId, seriesImdbId, episode.season_number, episode.episode_number]);
-
-  // On mount, request episode-level rating in background (only if OMDb enabled)
   useEffect(() => {
-    if (!ratingsCache) return;
-    if (!useOmdbRatings) return;
-    if (!seriesImdbId && !tmdbShowId) return; // cannot fetch if no show ID
-    // if cached and fresh, no need
-    const existing = ratingsCache.getCachedEpisode(tmdbShowId ?? seriesImdbId, episode.season_number, episode.episode_number);
-    const shouldRefresh = !existing || (Date.now() - (existing.fetchedAt || 0)) > (1000 * 60 * 60 * 24);
-    if (!shouldRefresh) return;
+    let mounted = true;
+    async function loadEpisodeRating() {
+      if (!useOmdbRatings || !ratingsCache || !seriesImdbId) {
+        setEpisodeOmdb(null);
+        return;
+      }
 
-    // fire background refresh
-    setEpisodeRatingLoading(true);
-    const promise = ratingsCache.refreshEpisode(seriesImdbId ?? null, tmdbShowId ?? (seriesImdbId ?? String(episode.id)), episode.season_number, episode.episode_number, true);
-    promise.finally(() => setEpisodeRatingLoading(false));
-    // no need to await here
-  }, [ratingsCache, useOmdbRatings, seriesImdbId, tmdbShowId, episode.season_number, episode.episode_number, episode.id]);
+      // Check cache first
+      const cached = ratingsCache.getEpisodeCached?.(seriesImdbId, episode.season_number, episode.episode_number);
+      if (cached && cached.imdbRating) {
+        if (mounted) {
+          setEpisodeOmdb({
+            imdbRating: cached.imdbRating,
+            imdbVotes: cached.imdbVotes,
+            metascore: cached.metascore,
+            rottenTomatoes: cached.rottenTomatoes,
+          });
+        }
+        // If stale, also trigger background refresh
+        const now = Date.now();
+        if (!cached.fetchedAt || now - cached.fetchedAt > (1000 * 60 * 60 * 24)) {
+          ratingsCache.refreshEpisode?.(seriesImdbId, episode.season_number, episode.episode_number, true).then((refreshed) => {
+            if (!mounted || !refreshed) return;
+            setEpisodeOmdb({
+              imdbRating: refreshed.imdbRating,
+              imdbVotes: refreshed.imdbVotes,
+              metascore: refreshed.metascore,
+              rottenTomatoes: refreshed.rottenTomatoes,
+            });
+          });
+        }
+        return;
+      }
 
-  // Collapsible star UI state
-  const [starsCollapsed, setStarsCollapsed] = useState(false);
+      // No cache — trigger refresh
+      try {
+        const refreshed = await ratingsCache.refreshEpisode?.(seriesImdbId, episode.season_number, episode.episode_number, false);
+        if (mounted && refreshed) {
+          setEpisodeOmdb({
+            imdbRating: refreshed.imdbRating,
+            imdbVotes: refreshed.imdbVotes,
+            metascore: refreshed.metascore,
+            rottenTomatoes: refreshed.rottenTomatoes,
+          });
+        }
+      } catch (e) {
+        // ignore
+        console.error('Episode OMDb fetch failed', e);
+      }
+    }
+
+    loadEpisodeRating();
+    return () => {
+      mounted = false;
+    };
+  }, [seriesImdbId, episode.season_number, episode.episode_number, ratingsCache, useOmdbRatings]);
+
+  // ----- collapsible "Your Rating" UI -----
+  const [ratingCollapsed, setRatingCollapsed] = useState<boolean>(true); // default collapsed
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const handleOutside = (ev: MouseEvent | TouchEvent) => {
+      if (!wrapperRef.current) return;
+      const target = ev.target as Node | null;
+      if (!target) return;
+      if (!wrapperRef.current.contains(target)) {
+        setRatingCollapsed(true);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, []);
+
+  // When the modal opens, keep collapsed by default
+  useEffect(() => {
+    setRatingCollapsed(true);
+  }, [episode.id]);
+
+  // star click handler
+  const handleStarClick = (n: number) => {
+    if (!onRate) return;
+    onRate(String(episode.id), n);
+  };
+
+  // Small helper to render the collapsed badge: shows user's rating if present else shows a star icon + "Rate"
+  const CollapsedBadge: React.FC = () => {
+    if (typeof userRating === 'number' && userRating > 0) {
+      return (
+        <button
+          onClick={() => setRatingCollapsed(false)}
+          className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/60 border border-white/10 text-slate-100 font-semibold"
+        >
+          <Star size={16} className="fill-cyan-400 text-cyan-400" />
+          <span>{userRating.toFixed(1)}</span>
+        </button>
+      );
+    }
+
+    return (
+      <button
+        onClick={() => setRatingCollapsed(false)}
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/6 border border-white/6 text-slate-200 font-medium"
+      >
+        <Star size={16} />
+        <span>Rate</span>
+      </button>
+    );
+  };
+
+  // render OMDb badges (IMDb / Metacritic / Rotten)
+  const OmdbBadges: React.FC = () => {
+    if (!useOmdbRatings) return null;
+    if (!episodeOmdb || (!episodeOmdb.imdbRating && !episodeOmdb.metascore && !episodeOmdb.rottenTomatoes)) {
+      return null;
+    }
+
+    return (
+      <div className="flex items-center gap-3 mb-4">
+        {episodeOmdb?.imdbRating && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/20 border border-amber-500/30">
+            <Star size={14} className="fill-amber-400 text-amber-400" />
+            <span className="font-bold text-lg text-amber-300">{parseFloat(episodeOmdb.imdbRating).toFixed(1)}</span>
+            <span className="text-xs text-amber-200/70 font-medium">IMDb</span>
+          </div>
+        )}
+        {episodeOmdb?.metascore && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-green-500/20 border border-green-500/30">
+            <span className="font-bold text-lg text-green-300">{episodeOmdb.metascore}</span>
+            <span className="text-xs text-green-200/70 font-medium">Metacritic</span>
+          </div>
+        )}
+        {episodeOmdb?.rottenTomatoes && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-red-500/20 border border-red-500/30">
+            <span className="font-bold text-lg text-red-300">{episodeOmdb.rottenTomatoes}</span>
+            <span className="text-xs text-red-200/70 font-medium">Rotten Tomatoes</span>
+          </div>
+        )}
+
+        {/* show TMDB episode rating as small pill too */}
+        {tmdbRating !== 'N/A' && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30">
+            <Star size={14} className="fill-cyan-400 text-cyan-400" />
+            <span className="font-bold text-sm text-cyan-300">{tmdbRating}</span>
+            <span className="text-xs text-cyan-200/70 font-medium">TMDB</span>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-2">
@@ -107,9 +228,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
           {/* Left: still */}
           <div className="relative bg-slate-900">
             <img
-              src={
-                episode.still_path ? `https://image.tmdb.org/t/p/w780${episode.still_path}` : 'https://picsum.photos/800/450'
-              }
+              src={episode.still_path ? `https://image.tmdb.org/t/p/w780${episode.still_path}` : 'https://picsum.photos/800/450'}
               alt={episode.name}
               className="w-full h-full object-cover"
             />
@@ -145,7 +264,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
           </div>
 
           {/* Right: details */}
-          <div className="p-4 md:p-6 flex flex-col gap-4 overflow-y-auto">
+          <div className="p-4 md:p-6 flex flex-col gap-4 overflow-y-auto" ref={wrapperRef}>
             {/* Overview */}
             <div>
               <h3 className="text-sm font-semibold text-slate-200 mb-1">Overview</h3>
@@ -154,44 +273,10 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
               </p>
             </div>
 
-            {/* Ratings row (OMDb episode-level preferred; fallback to series-level cached) */}
-            {useOmdbRatings && ratingsCache && (
-              <div className="mt-2 flex items-center gap-3">
-                {/* episode-level cached */}
-                {cachedEpisodeRating?.imdbRating ? (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-500/40 backdrop-blur-md text-amber-300">
-                    <Star size={14} className="text-amber-400 fill-amber-400" />
-                    <span className="font-semibold">{parseFloat(cachedEpisodeRating.imdbRating).toFixed(1)}</span>
-                    <span className="text-xs text-amber-200/70">IMDb</span>
-                  </div>
-                ) : (cachedEpisodeRating?.imdbId && !episodeRatingLoading) ? (
-                  // we have an imdb id but no rating (or OMDb returned no rating)
-                  <div className="text-xs text-slate-400 px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700">
-                    N/A IMDb
-                  </div>
-                ) : episodeRatingLoading ? (
-                  <div className="text-xs text-slate-400 px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700">
-                    Loading episode ratings...
-                  </div>
-                ) : null}
+            {/* OMDb / TMDB badges */}
+            <OmdbBadges />
 
-                {/* also show metacritic/rt if available */}
-                {cachedEpisodeRating?.metascore && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/30 text-green-300">
-                    <span className="font-semibold">{cachedEpisodeRating.metascore}</span>
-                    <span className="text-xs text-green-200/70">Metacritic</span>
-                  </div>
-                )}
-                {cachedEpisodeRating?.rottenTomatoes && (
-                  <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-red-300">
-                    <span className="font-semibold">{cachedEpisodeRating.rottenTomatoes}</span>
-                    <span className="text-xs text-red-200/70">Rotten Tomatoes</span>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Open in Stremio */}
+            {/* Open in Stremio (episode-aware) */}
             <div className="mt-2">
               <a
                 href={stremioEpisodeUrl}
@@ -204,68 +289,47 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
               </a>
             </div>
 
-            {/* User rating control with collapsible UI */}
-            {onRate && (
+            {/* Collapsible user rating control */}
+            <div>
+              <h3 className="text-sm font-semibold text-slate-200 mb-1">Your Rating</h3>
               <div>
-                <h3 className="text-sm font-semibold text-slate-200 mb-1">Your Rating</h3>
-
-                <div className="flex items-center gap-3">
-                  {starsCollapsed ? (
-                    // collapsed: show small badge with user's rating (or empty star to invite)
-                    <button
-                      onClick={() => setStarsCollapsed(false)}
-                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900/60 border border-white/10 hover:bg-white/5"
-                    >
-                      {typeof userRating === 'number' ? (
-                        <>
-                          <Star size={16} className="fill-cyan-400 text-cyan-400" />
-                          <span className="font-semibold">{userRating.toFixed(1)}</span>
-                        </>
-                      ) : (
-                        <>
-                          <Star size={16} className="text-slate-400" />
-                          <span className="text-slate-400">Rate</span>
-                        </>
-                      )}
-                    </button>
-                  ) : (
-                    // expanded: full 10-star control
-                    <div className="inline-flex items-center gap-2 bg-slate-900/60 border border-white/10 rounded-lg p-2">
-                      {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                {ratingCollapsed ? (
+                  <CollapsedBadge />
+                ) : (
+                  <div className="inline-flex items-center gap-2 bg-slate-900/60 border border-white/6 rounded-lg px-3 py-2">
+                    {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
+                      const active = typeof userRating === 'number' && userRating >= n;
+                      return (
                         <button
                           key={n}
-                          onClick={() => onRate && onRate(String(episode.id), n)}
-                          className={`p-1 ${userRating && userRating >= n ? 'text-cyan-400' : 'text-slate-600'}`}
+                          onClick={() => handleStarClick(n)}
+                          className={`p-1 ${active ? 'text-cyan-400' : 'text-slate-600'}`}
+                          aria-label={`Rate ${n}`}
                         >
-                          <Star
-                            size={18}
-                            className={userRating && userRating >= n ? 'fill-cyan-400' : 'fill-slate-800'}
-                          />
+                          <Star size={16} className={active ? 'fill-cyan-400' : 'fill-slate-800'} />
                         </button>
-                      ))}
-                      <button
-                        onClick={() => setStarsCollapsed(true)}
-                        className="ml-2 text-xs px-3 py-1 rounded-md bg-white/5 border border-white/10"
-                      >
-                        Collapse
-                      </button>
-                    </div>
-                  )}
-                </div>
+                      );
+                    })}
+                    <button
+                      onClick={() => setRatingCollapsed(true)}
+                      className="ml-3 px-3 py-1 rounded-lg bg-white/6 border border-white/8 text-xs"
+                    >
+                      Done
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
 
             {/* TMDB Reviews */}
-            {reviews.length > 0 && (
+            {reviews.length > 0 ? (
               <div className="mt-2 space-y-3">
                 <h3 className="text-sm font-semibold text-slate-200">TMDB Reviews</h3>
                 <div className="space-y-3 max-h-52 overflow-y-auto pr-1">
                   {reviews.map((rev) => (
                     <div key={rev.id} className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80">
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-semibold text-slate-100">
-                          {rev.author || rev.author_details.username || 'User'}
-                        </span>
+                        <span className="text-xs font-semibold text-slate-100">{rev.author || rev.author_details.username || 'User'}</span>
                         {typeof rev.author_details?.rating === 'number' && (
                           <span className="inline-flex items-center gap-1 text-xs text-amber-300">
                             <Star size={12} className="fill-amber-400 text-amber-400" />
@@ -278,9 +342,9 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
                   ))}
                 </div>
               </div>
+            ) : (
+              <p className="text-xs text-slate-500">No TMDB reviews available for this episode yet.</p>
             )}
-
-            {reviews.length === 0 && <p className="text-xs text-slate-500">No TMDB reviews available for this episode yet.</p>}
           </div>
         </div>
       </div>
