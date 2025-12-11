@@ -1,25 +1,24 @@
 // src/hooks/useRatingsCache.ts
 import { useEffect, useRef, useState } from 'react';
-import { fetchOmdbByImdbId } from '../services/omdbService';
 import * as tmdb from '../services/tmdbService';
 
 type RatingEntry = {
   imdbId?: string | null;
-  imdbRating?: string | null;   // "7.8"
-  imdbVotes?: string | null;    // "123,456"
-  metascore?: string | null;    // "62"
-  rottenTomatoes?: string | null; // "86%"
+  imdbRating?: string | null;   // e.g. "7.8"
+  imdbVotes?: string | null;    // e.g. "123,456"
+  metascore?: string | null;    // e.g. "62"
+  rottenTomatoes?: string | null; // e.g. "86%"
   fetchedAt: number;
 };
 
-type RatingsMap = Record<string, RatingEntry>; // keys like "movie:tmdbId", "tv:tmdbId", "episode:tmdbShowId:S01E02"
+type RatingsMap = Record<string, RatingEntry>; // generic key -> rating entry
 
 const STORAGE_KEY = 'omdb_ratings_cache_v1';
 const DEFAULT_TTL_MS = 1000 * 60 * 60 * 24; // 24 hours
 
 // concurrency limiter
 const MAX_CONCURRENT = 3;
-const FETCH_DELAY_MS = 250; // small polite delay
+const FETCH_DELAY_MS = 250; // polite gap between jobs
 
 export function useRatingsCache({
   tmdbApiKey,
@@ -39,19 +38,16 @@ export function useRatingsCache({
     }
   });
 
+  // queue / concurrency bookkeeping
   const queue = useRef<string[]>([]);
   const queuedKeys = useRef<Set<string>>(new Set());
   const running = useRef(0);
   const mounted = useRef(true);
-
-  // pending promises to dedupe concurrent refreshes for the same key
   const pendingPromises = useRef<Map<string, Promise<RatingEntry | null>>>(new Map());
 
   useEffect(() => {
     mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
+    return () => { mounted.current = false; };
   }, []);
 
   useEffect(() => {
@@ -63,64 +59,72 @@ export function useRatingsCache({
     }
   }, [map]);
 
-  const mapKey = (mediaType: 'movie' | 'tv', tmdbId: number) => `${mediaType}:${tmdbId}`;
-  const episodeKey = (tmdbShowIdOrImdb: string | number, season: number, episode: number) => {
-    // prefer numeric tmdbShowId for local key, but accept imdb string if tmdbShowId not available
-    return `episode:${tmdbShowIdOrImdb}:${String(season).padStart(2, '0')}:${String(episode).padStart(2, '0')}`;
-  };
+  function mapKeyForTmdb(mediaType: 'movie' | 'tv', tmdbId: number) {
+    return `${mediaType}:${tmdbId}`;
+  }
 
-  // queueing helpers
+  // Episode key uses show IMDb id (because TMDB episode id doesn't map to OMDb)
+  function mapKeyForEpisode(showImdbId: string, season: number, episode: number) {
+    return `episode:${showImdbId}:S${season}E${episode}`;
+  }
+
   function enqueueKey(key: string) {
     if (queuedKeys.current.has(key)) return;
     queuedKeys.current.add(key);
     queue.current.push(key);
-    void processQueue();
+    processQueue();
   }
 
   async function processQueue() {
-    if (running.current >= MAX_CONCURRENT) return;
-    const key = queue.current.shift();
-    if (!key) return;
-    queuedKeys.current.delete(key);
-    running.current++;
-    try {
-      const pending = pendingPromises.current.get(key);
-      if (pending) {
-        await pending;
-      } else {
-        // nothing - maybe the refresh call will create a pending
-        await new Promise((r) => setTimeout(r, 0));
-      }
-    } catch (e) {
-      console.error('ratings queue job error', e);
-    } finally {
-      running.current--;
-      if (mounted.current) {
-        setTimeout(() => processQueue(), FETCH_DELAY_MS);
-      }
+    while (running.current < MAX_CONCURRENT && queue.current.length > 0) {
+      const key = queue.current.shift();
+      if (!key) break;
+      queuedKeys.current.delete(key);
+      running.current++;
+      // don't await inside loop — start job concurrently but keep running count
+      (async (k) => {
+        try {
+          const p = pendingPromises.current.get(k);
+          if (p) {
+            await p;
+          } else {
+            // nothing pending (should be rare); give a small tick
+            await new Promise((r) => setTimeout(r, 0));
+          }
+        } catch (e) {
+          console.error('processQueue job error', e);
+        } finally {
+          running.current--;
+          // small gap before starting more
+          await new Promise((r) => setTimeout(r, FETCH_DELAY_MS));
+          if (mounted.current) processQueue();
+        }
+      })(key);
     }
   }
 
-  // Public: get cached show-level
+  // --------------------------
+  // Public: getCached (sync)
+  // --------------------------
   function getCached(mediaType: 'movie' | 'tv', tmdbId: number) {
-    const key = mapKey(mediaType, tmdbId);
+    const key = mapKeyForTmdb(mediaType, tmdbId);
     return map[key] ?? null;
   }
 
-  // Public: get cached episode-level
-  function getCachedEpisode(tmdbShowIdOrImdb: string | number, season: number, episode: number) {
-    const key = episodeKey(tmdbShowIdOrImdb, season, episode);
+  function getEpisodeCached(showImdbId: string, season: number, episode: number) {
+    if (!showImdbId) return null;
+    const key = mapKeyForEpisode(showImdbId, season, episode);
     return map[key] ?? null;
   }
 
-  // Core refresh for show-level (existing behavior) - returns promise
+  // --------------------------
+  // Refresh helpers
+  // --------------------------
   function refresh(mediaType: 'movie' | 'tv', tmdbId: number, force: boolean = false): Promise<RatingEntry | null> {
-    const key = mapKey(mediaType, tmdbId);
+    const key = mapKeyForTmdb(mediaType, tmdbId);
     const existing = map[key];
     const now = Date.now();
-    if (!force && existing && now - existing.fetchedAt < ttlMs) {
-      return Promise.resolve(existing);
-    }
+    if (!force && existing && now - existing.fetchedAt < ttlMs) return Promise.resolve(existing);
 
     const pending = pendingPromises.current.get(key);
     if (pending) return pending;
@@ -141,15 +145,16 @@ export function useRatingsCache({
           return entry;
         }
 
-        // fetch show-level OMDb data
-        const data = await fetchOmdbByImdbId(imdbId, omdbApiKey);
-        if (!data) {
+        // Use OMDb by IMDb id (movie/show level)
+        const url = `https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${encodeURIComponent(omdbApiKey)}`;
+        const res = await fetch(url);
+        if (!res.ok) {
           const entry: RatingEntry = { imdbId, fetchedAt: Date.now() };
           if (mounted.current) setMap((m) => ({ ...m, [key]: entry }));
           return entry;
         }
-
-        const rt = (data.Ratings || []).find((r: any) => r.Source.toLowerCase().includes('rotten'))?.Value ?? null;
+        const data = await res.json();
+        const rt = (data.Ratings || []).find((r: any) => r.Source?.toLowerCase().includes('rotten'))?.Value ?? null;
         const metascore = data.Metascore ?? null;
         const entry: RatingEntry = {
           imdbId,
@@ -174,54 +179,39 @@ export function useRatingsCache({
     return p;
   }
 
-  /**
-   * Fetch episode-level OMDb data:
-   * - showImdbId: the series IMDb id (e.g. tt1234567) OR
-   * - tmdbShowIdOrImdb: prefer tmdb show id for local cache key, but if missing pass the imdb string
-   *
-   * Note: OMDb supports fetching episode info via:
-   *   ?i=tt1234567&Season=1&Episode=2&apikey=...
-   *
-   * We call fetchOmdbByImdbId(imdbId, apikey, season?, episode?) — ensure your service supports the season/episode args.
-   */
-  function refreshEpisode(
-    showImdbId: string | null,
-    tmdbShowIdOrImdb: string | number,
-    season: number,
-    episode: number,
-    force: boolean = false
-  ): Promise<RatingEntry | null> {
-    const key = episodeKey(tmdbShowIdOrImdb, season, episode);
+  // Fetch episode-level rating via OMDb episode endpoint
+  function refreshEpisode(showImdbId: string, season: number, episode: number, force: boolean = false): Promise<RatingEntry | null> {
+    if (!showImdbId) return Promise.resolve(null);
+    if (!omdbApiKey) return Promise.resolve(null);
+
+    const key = mapKeyForEpisode(showImdbId, season, episode);
     const existing = map[key];
     const now = Date.now();
-    if (!force && existing && now - existing.fetchedAt < ttlMs) {
-      return Promise.resolve(existing);
-    }
+    if (!force && existing && now - existing.fetchedAt < ttlMs) return Promise.resolve(existing);
 
     const pending = pendingPromises.current.get(key);
     if (pending) return pending;
 
     const p = (async (): Promise<RatingEntry | null> => {
       try {
-        if (!showImdbId || !omdbApiKey) {
-          // store minimal record to avoid repeated failed calls
-          const entry: RatingEntry = { imdbId: showImdbId ?? null, fetchedAt: Date.now() };
+        // OMDb episode lookup: i=ttXXXXX&Season=1&Episode=2
+        const url = `https://www.omdbapi.com/?i=${encodeURIComponent(showImdbId)}&Season=${encodeURIComponent(String(season))}&Episode=${encodeURIComponent(String(episode))}&apikey=${encodeURIComponent(omdbApiKey)}`;
+        const res = await fetch(url);
+        if (!res.ok) {
+          const entry: RatingEntry = { imdbId: showImdbId, fetchedAt: Date.now() };
           if (mounted.current) setMap((m) => ({ ...m, [key]: entry }));
           return entry;
         }
-
-        // IMPORTANT: fetchOmdbByImdbId must accept season & episode optional parameters.
-        // e.g. fetchOmdbByImdbId('tt123', apiKey, 1, 2)
-        const data = await fetchOmdbByImdbId(showImdbId, omdbApiKey, season, episode);
-        if (!data) {
+        const data = await res.json();
+        // If OMDb returns an error or no rating, keep a timestamped entry to avoid repeated failing calls
+        if (data?.Error) {
           const entry: RatingEntry = { imdbId: showImdbId, fetchedAt: Date.now() };
           if (mounted.current) setMap((m) => ({ ...m, [key]: entry }));
           return entry;
         }
 
-        const rt = (data.Ratings || []).find((r: any) => r.Source.toLowerCase().includes('rotten'))?.Value ?? null;
+        const rt = (data.Ratings || []).find((r: any) => r.Source?.toLowerCase().includes('rotten'))?.Value ?? null;
         const metascore = data.Metascore ?? null;
-
         const entry: RatingEntry = {
           imdbId: showImdbId,
           imdbRating: data.imdbRating ?? null,
@@ -230,11 +220,10 @@ export function useRatingsCache({
           rottenTomatoes: rt,
           fetchedAt: Date.now(),
         };
-
         if (mounted.current) setMap((m) => ({ ...m, [key]: entry }));
         return entry;
       } catch (err) {
-        console.error('refresh episode rating failed', err);
+        console.error('refreshEpisode failed', err);
         return null;
       } finally {
         pendingPromises.current.delete(key);
@@ -246,16 +235,16 @@ export function useRatingsCache({
     return p;
   }
 
-  // Bulk ensure for list (show-level)
+  // Bulk ensure - used by home/search lists; for episode we don't bulk fetch unless you pass episode tuples
   function ensureForList(items: Array<{ media_type: 'movie' | 'tv'; id: number }>, maxToEnqueue = 10) {
     const now = Date.now();
     let enqueued = 0;
     for (const it of items) {
       if (enqueued >= maxToEnqueue) break;
-      const key = mapKey(it.media_type, it.id);
+      const key = mapKeyForTmdb(it.media_type, it.id);
       const existing = map[key];
       if (!existing || now - existing.fetchedAt >= ttlMs) {
-        void refresh(it.media_type, it.id, true).catch((e) => console.error('ensureForList refresh failed', e));
+        refresh(it.media_type, it.id, true).catch((e) => console.error('ensureForList refresh failed', e));
         enqueued++;
       }
     }
@@ -263,16 +252,17 @@ export function useRatingsCache({
 
   function clearCache() {
     if (mounted.current) setMap({});
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {}
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
   }
 
   return {
+    // movie/show
     getCached,
     refresh,
-    getCachedEpisode,
+    // episode
+    getEpisodeCached,
     refreshEpisode,
+    // bulk
     ensureForList,
     clearCache,
     rawMap: map,
