@@ -405,6 +405,7 @@ const App: React.FC = () => {
           onClick={handleCardClick}
           rank={showRank ? idx + 1 : undefined}
           ratingsCache={ratingsCache}
+          useOmdbRatings={useOmdbRatings}
         />
       ))}
     </div>
@@ -693,6 +694,7 @@ const App: React.FC = () => {
               accentColor="cyan"
               emptyMessage="No trending movies available right now."
               ratingsCache={ratingsCache}
+              useOmdbRatings={useOmdbRatings}
             />
 
             <HorizontalCarousel
@@ -702,6 +704,7 @@ const App: React.FC = () => {
               accentColor="fuchsia"
               emptyMessage="No trending series available right now."
               ratingsCache={ratingsCache}
+              useOmdbRatings={useOmdbRatings}
             />
 
             <HorizontalCarousel
@@ -711,6 +714,7 @@ const App: React.FC = () => {
               accentColor="emerald"
               emptyMessage='No "Now Playing" movies available for your region.'
               ratingsCache={ratingsCache}
+              useOmdbRatings={useOmdbRatings}
             />
 
             <HorizontalCarousel
@@ -720,6 +724,7 @@ const App: React.FC = () => {
               accentColor="indigo"
               emptyMessage='No "On The Air" TV data available right now.'
               ratingsCache={ratingsCache}
+              useOmdbRatings={useOmdbRatings}
             />
           </div>
         ) : (
@@ -803,6 +808,7 @@ const App: React.FC = () => {
           userRatings={state.userRatings}
           onRate={rateItem}
           ratingsCache={ratingsCache}
+          useOmdbRatings={useOmdbRatings}
         />
       )}
 
@@ -826,6 +832,7 @@ const App: React.FC = () => {
           onRate={rateItem}
           userRating={state.userRatings[String(state.selectedEpisode.id)]}
           ratingsCache={ratingsCache}
+          useOmdbRatings={useOmdbRatings}
         />
       )}
 

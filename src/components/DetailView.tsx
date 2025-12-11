@@ -52,6 +52,7 @@ interface DetailViewProps {
   userRatings: { [key: string]: number };
   onRate: (itemId: string, rating: number) => void;
   ratingsCache?: any;
+  useOmdbRatings?: boolean;
 }
 
 // helper heart so we can pass `filled`
@@ -79,6 +80,7 @@ const DetailView: React.FC<DetailViewProps> = ({
   userRatings,
   onRate,
   ratingsCache,
+  useOmdbRatings = true,
 }) => {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
@@ -181,8 +183,8 @@ const DetailView: React.FC<DetailViewProps> = ({
   );
   const userMediaRating = userRatings[mediaKey] || 0;
 
-  // Get cached OMDb ratings if available
-  const cachedRating = ratingsCache && item.media_type !== 'person'
+  // Get cached OMDb ratings if available AND OMDb is enabled
+  const cachedRating = useOmdbRatings && ratingsCache && item.media_type !== 'person'
     ? ratingsCache.getCached(item.media_type, item.id)
     : null;
 

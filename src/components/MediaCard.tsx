@@ -9,9 +9,11 @@ interface MediaCardProps {
   rank?: number;
   /** Optional ratings cache hook result */
   ratingsCache?: any;
+  /** Whether to use OMDb ratings (when false, show only TMDB) */
+  useOmdbRatings?: boolean;
 }
 
-const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank, ratingsCache }) => {
+const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank, ratingsCache, useOmdbRatings = true }) => {
   const imageUrl = item.poster_path
     ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
     : item.still_path
@@ -23,12 +25,12 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank, ratingsCache
   const year = date ? new Date(date).getFullYear() : 'N/A';
   const isEpisode = !!item.episode_number;
 
-  // Get cached rating if available
-  const cachedRating = ratingsCache && item.media_type && item.media_type !== 'person'
+  // Get cached rating if available AND OMDb is enabled
+  const cachedRating = useOmdbRatings && ratingsCache && item.media_type && item.media_type !== 'person'
     ? ratingsCache.getCached(item.media_type, item.id)
     : null;
 
-  // Prefer IMDb rating from OMDb, fallback to TMDB
+  // Prefer IMDb rating from OMDb (when enabled), fallback to TMDB
   const displayRating = cachedRating?.imdbRating
     ? parseFloat(cachedRating.imdbRating)
     : item.vote_average

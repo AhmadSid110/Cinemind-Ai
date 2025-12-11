@@ -14,6 +14,7 @@ interface EpisodeDetailViewProps {
   onRate?: (id: string, rating: number) => void;
   userRating?: number;
   ratingsCache?: any;
+  useOmdbRatings?: boolean;
 }
 
 const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
@@ -23,6 +24,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
   onRate,
   userRating,
   ratingsCache,
+  useOmdbRatings = true,
 }) => {
   const airYear = episode.air_date
     ? new Date(episode.air_date).getFullYear()
