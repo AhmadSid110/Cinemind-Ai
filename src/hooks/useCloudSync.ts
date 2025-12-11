@@ -10,6 +10,7 @@ interface UseCloudSyncProps {
   geminiKey: string;
   openaiKey: string;
   omdbKey: string;
+  useOmdbRatings: boolean;
   /**
    * Called when cloud has API keys – should update local key state + localStorage.
    */
@@ -17,7 +18,8 @@ interface UseCloudSyncProps {
     tmdbKey: string,
     geminiKey: string,
     openaiKey: string,
-    omdbKey: string
+    omdbKey: string,
+    useOmdbRatings: boolean
   ) => void;
 }
 
@@ -34,6 +36,7 @@ export function useCloudSync({
   geminiKey,
   openaiKey,
   omdbKey,
+  useOmdbRatings,
   updateKeysFromCloud,
 }: UseCloudSyncProps) {
   const [syncing, setSyncing] = useState(false);
@@ -72,6 +75,7 @@ export function useCloudSync({
         const nextGeminiKey = cloud.geminiKey ?? geminiKey ?? '';
         const nextOpenaiKey = cloud.openaiKey ?? openaiKey ?? '';
         const nextOmdbKey = cloud.omdbKey ?? omdbKey ?? '';
+        const nextUseOmdbRatings = cloud.useOmdbRatings ?? useOmdbRatings ?? true;
 
         if (cancelled) return;
 
@@ -90,13 +94,14 @@ export function useCloudSync({
 
         // Tell the key hook to update its state + localStorage
         if (updateKeysFromCloud) {
-          updateKeysFromCloud(nextTmdbKey, nextGeminiKey, nextOpenaiKey, nextOmdbKey);
+          updateKeysFromCloud(nextTmdbKey, nextGeminiKey, nextOpenaiKey, nextOmdbKey, nextUseOmdbRatings);
         } else {
           // If callback not provided, at least keep localStorage consistent
           localStorage.setItem('tmdb_key', nextTmdbKey);
           localStorage.setItem('gemini_key', nextGeminiKey);
           localStorage.setItem('openai_key', nextOpenaiKey);
           localStorage.setItem('omdb_key', nextOmdbKey);
+          localStorage.setItem('use_omdb_ratings', String(nextUseOmdbRatings));
         }
 
         // Set the "last synced" snapshot to exactly what we'll push later
@@ -108,6 +113,7 @@ export function useCloudSync({
           geminiKey: nextGeminiKey,
           openaiKey: nextOpenaiKey,
           omdbKey: nextOmdbKey,
+          useOmdbRatings: nextUseOmdbRatings,
         });
       } catch (err) {
         console.error('Error loading user cloud data:', err);
@@ -126,7 +132,7 @@ export function useCloudSync({
     };
     // 🔴 IMPORTANT: we intentionally DO NOT include updateKeysFromCloud here
     // or it would re-run on every render. We only want this when `user` changes.
-  }, [user, setState, tmdbKey, geminiKey, openaiKey, omdbKey]);
+  }, [user, setState, tmdbKey, geminiKey, openaiKey, omdbKey, useOmdbRatings]);
 
   // ------------ CONTINUOUS SYNC TO CLOUD WHEN DATA CHANGES ------------
   useEffect(() => {
@@ -141,6 +147,7 @@ export function useCloudSync({
         geminiKey,
         openaiKey,
         omdbKey,
+        useOmdbRatings,
       };
 
       const currentDataString = JSON.stringify(dataToSync);
@@ -175,6 +182,7 @@ export function useCloudSync({
     geminiKey,
     openaiKey,
     omdbKey,
+    useOmdbRatings,
   ]);
 
   return {

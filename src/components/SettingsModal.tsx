@@ -7,7 +7,8 @@ interface SettingsModalProps {
   currentGeminiKey: string;
   currentOpenAIKey: string;
   currentOmdbKey: string;
-  onSave: (tmdbKey: string, geminiKey: string, openaiKey: string, omdbKey: string) => void;
+  useOmdbRatings: boolean;
+  onSave: (tmdbKey: string, geminiKey: string, openaiKey: string, omdbKey: string, useOmdbRatings: boolean) => void;
   onClose: () => void;
   isOpen: boolean;
 }
@@ -17,6 +18,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   currentGeminiKey,
   currentOpenAIKey,
   currentOmdbKey,
+  useOmdbRatings,
   onSave,
   onClose,
   isOpen,
@@ -26,6 +28,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [geminiKeyInput, setGeminiKeyInput] = useState(currentGeminiKey || '');
   const [openaiKeyInput, setOpenaiKeyInput] = useState(currentOpenAIKey || '');
   const [omdbKeyInput, setOmdbKeyInput] = useState(currentOmdbKey || '');
+  const [useOmdbToggle, setUseOmdbToggle] = useState(useOmdbRatings);
   const [status, setStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
 
   // …and kept in sync if props change (e.g. when Firebase finishes loading)
@@ -44,6 +47,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => {
     setOmdbKeyInput(currentOmdbKey || '');
   }, [currentOmdbKey]);
+
+  useEffect(() => {
+    setUseOmdbToggle(useOmdbRatings);
+  }, [useOmdbRatings]);
 
   if (!isOpen) return null;
 
@@ -66,7 +73,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       if (isValid) {
         setStatus('valid');
         // Let parent (App.tsx) update state + Firebase
-        onSave(trimmedTmdb, trimmedGemini, trimmedOpenAI, trimmedOmdb);
+        onSave(trimmedTmdb, trimmedGemini, trimmedOpenAI, trimmedOmdb, useOmdbToggle);
 
         // Close after a short success flash
         setTimeout(() => {
@@ -210,6 +217,27 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             </a>
             .
           </p>
+          
+          {/* Toggle for OMDb Ratings */}
+          <div className="flex items-center justify-between pt-2">
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-slate-300">Use OMDb Ratings</span>
+              <span className="text-xs text-slate-500">Show IMDb/Metacritic/RT ratings instead of TMDB only</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setUseOmdbToggle(!useOmdbToggle)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                useOmdbToggle ? 'bg-amber-500' : 'bg-slate-700'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  useOmdbToggle ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
         </div>
 
         {status === 'invalid' && (

@@ -18,17 +18,27 @@ export function useApiKeys(user: any) {
   const [omdbKey, setOmdbKey] = useState<string>(
     localStorage.getItem('omdb_key') || ''
   );
+  const [useOmdbRatings, setUseOmdbRatings] = useState<boolean>(() => {
+    const stored = localStorage.getItem('use_omdb_ratings');
+    return stored ? stored === 'true' : true; // Default to true (enabled)
+  });
 
   const saveKeys = (
     newTmdbKey: string,
     newGeminiKey: string,
     newOpenaiKey: string,
-    newOmdbKey: string
+    newOmdbKey: string,
+    newUseOmdbRatings?: boolean
   ) => {
     localStorage.setItem('tmdb_key', newTmdbKey);
     localStorage.setItem('gemini_key', newGeminiKey);
     localStorage.setItem('openai_key', newOpenaiKey);
     localStorage.setItem('omdb_key', newOmdbKey);
+    
+    if (newUseOmdbRatings !== undefined) {
+      localStorage.setItem('use_omdb_ratings', String(newUseOmdbRatings));
+      setUseOmdbRatings(newUseOmdbRatings);
+    }
 
     setTmdbKey(newTmdbKey);
     setGeminiKey(newGeminiKey);
@@ -41,7 +51,8 @@ export function useApiKeys(user: any) {
     cloudTmdbKey: string,
     cloudGeminiKey: string,
     cloudOpenaiKey: string,
-    cloudOmdbKey: string
+    cloudOmdbKey: string,
+    cloudUseOmdbRatings?: boolean
   ) => {
     if (cloudTmdbKey) {
       setTmdbKey(cloudTmdbKey);
@@ -59,6 +70,10 @@ export function useApiKeys(user: any) {
       setOmdbKey(cloudOmdbKey);
       localStorage.setItem('omdb_key', cloudOmdbKey);
     }
+    if (cloudUseOmdbRatings !== undefined) {
+      setUseOmdbRatings(cloudUseOmdbRatings);
+      localStorage.setItem('use_omdb_ratings', String(cloudUseOmdbRatings));
+    }
   };
 
   return {
@@ -66,6 +81,7 @@ export function useApiKeys(user: any) {
     geminiKey,
     openaiKey,
     omdbKey,
+    useOmdbRatings,
     saveKeys,
     updateKeysFromCloud,
   };

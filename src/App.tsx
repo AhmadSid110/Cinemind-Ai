@@ -44,6 +44,7 @@ const App: React.FC = () => {
     geminiKey,
     openaiKey,
     omdbKey,
+    useOmdbRatings,
     saveKeys,
     updateKeysFromCloud,
   } = useApiKeys(user);
@@ -93,6 +94,7 @@ const App: React.FC = () => {
     geminiKey,
     openaiKey,
     omdbKey,
+    useOmdbRatings,
     updateKeysFromCloud,
   });
 
@@ -121,13 +123,16 @@ const App: React.FC = () => {
   // ---------- RATINGS CACHE ----------
   const ratingsCache = useRatingsCache({
     tmdbApiKey: tmdbKey,
-    omdbApiKey: omdbKey,
+    omdbApiKey: useOmdbRatings ? omdbKey : '', // Only pass OMDb key if user wants to use it
     ttlMs: 1000 * 60 * 60 * 24, // 24 hours
   });
 
   // ---------- FETCH RATINGS FOR HOME FEED ----------
   useEffect(() => {
-    if (!tmdbKey || !omdbKey) return;
+    // Only fetch OMDb ratings if enabled and key is present
+    if (!tmdbKey) return;
+    if (!useOmdbRatings) return; // Skip OMDb fetching when disabled
+    if (!omdbKey) return; // Skip if no OMDb key configured
     
     const allItems = [
       ...trendingMovies,
@@ -139,7 +144,7 @@ const App: React.FC = () => {
     if (allItems.length > 0) {
       ratingsCache.ensureForList(allItems, 20); // Limit to 20 concurrent to avoid overwhelming API
     }
-  }, [trendingMovies, trendingTv, nowPlayingMovies, onAirTv, tmdbKey, omdbKey, ratingsCache]);
+  }, [trendingMovies, trendingTv, nowPlayingMovies, onAirTv, tmdbKey, omdbKey, useOmdbRatings, ratingsCache]);
 
   // ---------- MEDIA SEARCH ----------
   const {
@@ -163,7 +168,11 @@ const App: React.FC = () => {
 
   // ---------- FETCH RATINGS FOR SEARCH RESULTS ----------
   useEffect(() => {
-    if (!tmdbKey || !omdbKey || searchResults.length === 0) return;
+    // Only fetch OMDb ratings if enabled and key is present
+    if (!tmdbKey) return;
+    if (!useOmdbRatings) return; // Skip OMDb fetching when disabled
+    if (!omdbKey) return; // Skip if no OMDb key configured
+    if (searchResults.length === 0) return;
     
     const items = searchResults.filter(
       item => item.id && (item.media_type === 'movie' || item.media_type === 'tv')
@@ -172,7 +181,7 @@ const App: React.FC = () => {
     if (items.length > 0) {
       ratingsCache.ensureForList(items, 20);
     }
-  }, [searchResults, tmdbKey, omdbKey, ratingsCache]);
+  }, [searchResults, tmdbKey, omdbKey, useOmdbRatings, ratingsCache]);
 
   // ---------- LOCAL PERSISTENCE ----------
   useEffect(() => {
@@ -827,8 +836,9 @@ const App: React.FC = () => {
         currentGeminiKey={geminiKey}
         currentOpenAIKey={openaiKey}
         currentOmdbKey={omdbKey}
-        onSave={async (key, geminiKey, openaiKey, omdbKey) => {
-          saveKeys(key, geminiKey, openaiKey, omdbKey);
+        useOmdbRatings={useOmdbRatings}
+        onSave={async (key, geminiKey, openaiKey, omdbKey, useOmdb) => {
+          saveKeys(key, geminiKey, openaiKey, omdbKey, useOmdb);
         }}
       />
     </div>
