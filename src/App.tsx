@@ -37,7 +37,7 @@ import { useMediaSearch } from './hooks/useMediaSearch';
 import { useRatingsCache } from './hooks/useRatingsCache';
 
 const App: React.FC = () => {
-  // ---------- HOOKS ----------
+  // ---------- AUTH / KEYS ----------
   const { user, login, logout } = useAuth();
   const {
     tmdbKey,
@@ -63,14 +63,15 @@ const App: React.FC = () => {
     userRatings: JSON.parse(localStorage.getItem('userRatings') || '{}'),
   });
 
-  // search suggestions visibility + click-outside handling
+  // ---------- SEARCH SUGGESTIONS UI ----------
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchWrapperRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent | TouchEvent) => {
       if (!searchWrapperRef.current) return;
-      const target = event.target as Node;
+      const target = event.target as Node | null;
+      if (!target) return;
       if (!searchWrapperRef.current.contains(target)) {
         setShowSuggestions(false);
       }
@@ -85,7 +86,7 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Cloud sync
+  // ---------- HOOKS ----------
   const { syncing: isSyncingCloud } = useCloudSync({
     user,
     state,
@@ -98,7 +99,6 @@ const App: React.FC = () => {
     updateKeysFromCloud,
   });
 
-  // Library management
   const { toggleFavorite, toggleWatchlist, rateItem } = useLibrary({
     favorites: state.favorites,
     watchlist: state.watchlist,
@@ -120,29 +120,30 @@ const App: React.FC = () => {
     streamingNow: onAirTv,
   } = useHomeFeed(tmdbKey);
 
-  // ---------- RATINGS CACHE ----------
+  // ---------- RATINGS CACHE (OMDb) ----------
   const ratingsCache = useRatingsCache({
     tmdbApiKey: tmdbKey,
-    omdbApiKey: useOmdbRatings ? omdbKey : '', // Only pass OMDb key if user wants to use it
+    omdbApiKey: useOmdbRatings ? omdbKey : '',
     ttlMs: 1000 * 60 * 60 * 24, // 24 hours
   });
 
-  // ---------- FETCH RATINGS FOR HOME FEED ----------
+  // Fetch OMDb ratings for home feed (if enabled)
   useEffect(() => {
-    // Only fetch OMDb ratings if enabled and key is present
     if (!tmdbKey) return;
-    if (!useOmdbRatings) return; // Skip OMDb fetching when disabled
-    if (!omdbKey) return; // Skip if no OMDb key configured
-    
+    if (!useOmdbRatings) return;
+    if (!omdbKey) return;
+
     const allItems = [
       ...trendingMovies,
       ...trendingTv,
       ...nowPlayingMovies,
       ...onAirTv,
-    ].filter(item => item.id && (item.media_type === 'movie' || item.media_type === 'tv'));
+    ].filter(
+      (it) => it && (it.media_type === 'movie' || it.media_type === 'tv')
+    );
 
     if (allItems.length > 0) {
-      ratingsCache.ensureForList(allItems, 20); // Limit to 20 concurrent to avoid overwhelming API
+      ratingsCache.ensureForList(allItems, 20);
     }
   }, [trendingMovies, trendingTv, nowPlayingMovies, onAirTv, tmdbKey, omdbKey, useOmdbRatings, ratingsCache]);
 
@@ -166,16 +167,15 @@ const App: React.FC = () => {
     trendingTv,
   });
 
-  // ---------- FETCH RATINGS FOR SEARCH RESULTS ----------
+  // Fetch OMDb ratings for search results (if enabled)
   useEffect(() => {
-    // Only fetch OMDb ratings if enabled and key is present
     if (!tmdbKey) return;
-    if (!useOmdbRatings) return; // Skip OMDb fetching when disabled
-    if (!omdbKey) return; // Skip if no OMDb key configured
-    if (searchResults.length === 0) return;
-    
+    if (!useOmdbRatings) return;
+    if (!omdbKey) return;
+    if (!searchResults || searchResults.length === 0) return;
+
     const items = searchResults.filter(
-      item => item.id && (item.media_type === 'movie' || item.media_type === 'tv')
+      (it) => it && (it.media_type === 'movie' || it.media_type === 'tv')
     );
 
     if (items.length > 0) {
@@ -183,7 +183,7 @@ const App: React.FC = () => {
     }
   }, [searchResults, tmdbKey, omdbKey, useOmdbRatings, ratingsCache]);
 
-  // ---------- LOCAL PERSISTENCE ----------
+  // ---------- PERSIST LOCAL STATE ----------
   useEffect(() => {
     localStorage.setItem('favorites', JSON.stringify(state.favorites));
     localStorage.setItem('watchlist', JSON.stringify(state.watchlist));
@@ -191,7 +191,6 @@ const App: React.FC = () => {
   }, [state.favorites, state.watchlist, state.userRatings]);
 
   // ---------- ACTIONS ----------
-
   const goToHome = () => {
     setState((prev) => ({
       ...prev,
@@ -208,11 +207,9 @@ const App: React.FC = () => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-
     setState((prev) => ({ ...prev, isLoading: true, error: null }));
     await search();
 
-    // Read latest explanation / error from hook after search
     setState((prev) => ({
       ...prev,
       view: 'search',
@@ -224,8 +221,13 @@ const App: React.FC = () => {
     setShowSuggestions(false);
   };
 
+  /**
+   * handleCardClick
+   * - If card is an episode (from "top episodes" etc.), we fetch both episode details AND the parent show details
+   * - Inject `show_name`, `show_imdb_id`, `show_tvdb_id` into episodeDetails before putting into state
+   */
   const handleCardClick = async (item: MediaItem) => {
-    // Episode card (from AI "top episodes" search)
+    // Episode card (from episode ranking)
     if ((item as any).season_number && (item as any).episode_number) {
       if (!tmdbKey) return;
       setState((prev) => ({ ...prev, isLoading: true }));
@@ -241,7 +243,7 @@ const App: React.FC = () => {
           return;
         }
 
-        // Fetch both episode + show details so we can attach series IMDb/TVDB
+        // Fetch episode details + show details in parallel
         const [episodeDetails, showDetails] = await Promise.all([
           tmdb.getEpisodeDetails(
             tmdbKey,
@@ -252,6 +254,7 @@ const App: React.FC = () => {
           tmdb.getDetails(tmdbKey, 'tv', showId),
         ]);
 
+        // Inject series-level metadata into the episode object
         (episodeDetails as any).show_name =
           showDetails.name || showDetails.title || '';
         (episodeDetails as any).show_imdb_id =
@@ -302,6 +305,11 @@ const App: React.FC = () => {
     }
   };
 
+  /**
+   * handleEpisodeClick
+   * - Used when clicking an episode from inside a DetailView season episodes list
+   * - Makes sure to attach show-level ids to episodeDetails so EpisodeDetailView can make episode deep-link reliably
+   */
   const handleEpisodeClick = async (
     showId: number,
     seasonNumber: number,
@@ -310,6 +318,7 @@ const App: React.FC = () => {
     if (!tmdbKey) return;
     setState((prev) => ({ ...prev, isLoading: true }));
     try {
+      // Fetch episode details
       const episodeDetails = await tmdb.getEpisodeDetails(
         tmdbKey,
         showId,
@@ -317,8 +326,9 @@ const App: React.FC = () => {
         episodeNumber
       );
 
-      // Attach show metadata (for episode deep link)
-      if (state.selectedItem) {
+      // If we already have the show loaded in selectedItem (DetailView open),
+      // reuse its external_ids. Otherwise, fetch show detail for external ids.
+      if (state.selectedItem && (state.selectedItem as any).id === showId) {
         const show: any = state.selectedItem;
         (episodeDetails as any).show_name =
           show.title || show.name || '';
@@ -326,6 +336,15 @@ const App: React.FC = () => {
           show.external_ids?.imdb_id ?? null;
         (episodeDetails as any).show_tvdb_id =
           show.external_ids?.tvdb_id ?? null;
+      } else {
+        // Fetch show details in case not present
+        const showDetails = await tmdb.getDetails(tmdbKey, 'tv', showId);
+        (episodeDetails as any).show_name =
+          showDetails.name || showDetails.title || '';
+        (episodeDetails as any).show_imdb_id =
+          (showDetails as any).external_ids?.imdb_id ?? null;
+        (episodeDetails as any).show_tvdb_id =
+          (showDetails as any).external_ids?.tvdb_id ?? null;
       }
 
       setState((prev) => ({
@@ -374,7 +393,6 @@ const App: React.FC = () => {
       alert('Google login failed. Check console for details.');
     }
   };
-
   const handleLogout = async () => {
     try {
       await logout();
@@ -383,7 +401,7 @@ const App: React.FC = () => {
     }
   };
 
-  // ---------- AUTOCOMPLETE CLICK ----------
+  // ---------- AUTOCOMPLETE SUGGESTION CLICK ----------
   const handleSuggestionClick = (item: MediaItem) => {
     selectSuggestion(item);
     setState((prev) => ({
@@ -460,15 +478,13 @@ const App: React.FC = () => {
                 onChange={(e) => {
                   const val = e.target.value;
                   setSearchQuery(val);
-                  if (val.trim()) {
-                    setShowSuggestions(true);
-                  } else {
-                    setShowSuggestions(false);
-                  }
+                  if (val.trim()) setShowSuggestions(true);
+                  else setShowSuggestions(false);
                 }}
                 placeholder="Search titles or ask things like 'Top 20 sci-fi movies like Interstellar'"
                 className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
               />
+
               {isSearching && (
                 <div className="absolute inset-y-0 right-4 flex items-center">
                   <Loader2 className="animate-spin text-cyan-500" size={20} />
@@ -482,11 +498,8 @@ const App: React.FC = () => {
                   <div className="absolute mt-2 left-0 right-0 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 max-h-80 overflow-y-auto">
                     {suggestions.map((sug, idx) => {
                       const title = sug.title || sug.name;
-                      const date =
-                        sug.release_date || sug.first_air_date || '';
-                      const year = date
-                        ? new Date(date).getFullYear()
-                        : '';
+                      const date = sug.release_date || sug.first_air_date || '';
+                      const year = date ? new Date(date).getFullYear() : '';
                       return (
                         <button
                           key={`${sug.id}-${idx}`}
@@ -495,9 +508,7 @@ const App: React.FC = () => {
                           className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-800 border-b border-slate-800/60 last:border-b-0"
                         >
                           <div className="flex flex-col items-start">
-                            <span className="text-slate-100">
-                              {title}
-                            </span>
+                            <span className="text-slate-100">{title}</span>
                             <span className="text-xs text-slate-500">
                               {(sug.media_type || '').toUpperCase()}{' '}
                               {year && `• ${year}`}
@@ -573,7 +584,7 @@ const App: React.FC = () => {
 
       {/* MAIN CONTENT */}
       <main className="max-w-7xl mx-auto px-4 py-10">
-        {/* AI Explanation Banner */}
+        {/* AI Explanation */}
         {state.aiExplanation && !isSearching && (
           <div className="mb-10 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 border border-cyan-500/20 p-5 rounded-2xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="p-2 bg-cyan-500/10 rounded-lg">
@@ -590,7 +601,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Error Banner */}
+        {/* Error */}
         {state.error && (
           <div className="mb-8 bg-red-950/20 border border-red-500/30 p-4 rounded-2xl text-red-200 text-center flex flex-col items-center gap-2">
             <Loader2 className="animate-spin text-red-400" size={24} />
@@ -598,15 +609,13 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* Views */}
         {state.view === 'library' ? (
-          // -------- LIBRARY VIEW --------
           <div className="space-y-8 animate-in fade-in duration-500">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <h2 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400 flex items-center gap-3">
                 <Library className="text-cyan-500" /> My Library
               </h2>
-
-              {/* Tab Switcher */}
               <div className="bg-slate-900/50 p-1.5 rounded-xl flex gap-1 border border-white/5 backdrop-blur-md">
                 <button
                   onClick={() => setLibraryTab('favorites')}
@@ -616,15 +625,7 @@ const App: React.FC = () => {
                       : 'text-slate-400 hover:text-white hover:bg-white/5'
                   }`}
                 >
-                  <Heart
-                    size={16}
-                    className={
-                      libraryTab === 'favorites'
-                        ? 'text-pink-500 fill-pink-500'
-                        : ''
-                    }
-                  />{' '}
-                  Favorites
+                  <Heart size={16} className={libraryTab === 'favorites' ? 'text-pink-500 fill-pink-500' : ''} /> Favorites
                 </button>
                 <button
                   onClick={() => setLibraryTab('watchlist')}
@@ -634,20 +635,11 @@ const App: React.FC = () => {
                       : 'text-slate-400 hover:text-white hover:bg-white/5'
                   }`}
                 >
-                  <List
-                    size={16}
-                    className={
-                      libraryTab === 'watchlist'
-                        ? 'text-emerald-500'
-                        : ''
-                    }
-                  />{' '}
-                  Watchlist
+                  <List size={16} className={libraryTab === 'watchlist' ? 'text-emerald-500' : ''} /> Watchlist
                 </button>
               </div>
             </div>
 
-            {/* Filters */}
             <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
               {[
                 { id: 'all', label: 'All', icon: null },
@@ -669,7 +661,6 @@ const App: React.FC = () => {
               ))}
             </div>
 
-            {/* Grid – no ranking in library */}
             <div className="min-h-[300px]">
               {getFilteredLibrary().length > 0 ? (
                 renderGrid(getFilteredLibrary(), false)
@@ -685,7 +676,6 @@ const App: React.FC = () => {
             </div>
           </div>
         ) : state.view === 'trending' ? (
-          // -------- HOME / TRENDING VIEW WITH HORIZONTAL CAROUSELS --------
           <div className="space-y-10 animate-in fade-in duration-500">
             <HorizontalCarousel
               title="Trending Movies"
@@ -728,14 +718,12 @@ const App: React.FC = () => {
             />
           </div>
         ) : (
-          // -------- SEARCH RESULTS VIEW --------
           <div className="animate-in fade-in duration-500">
             <h2 className="text-3xl font-bold text-white mb-8 capitalize flex items-center gap-3">
               <span className="w-2 h-8 bg-cyan-500 rounded-full" />
               Search Results
             </h2>
             {searchResults.length > 0 ? (
-              // ranking numbers ONLY when view === 'search'
               renderGrid(searchResults, true)
             ) : (
               !isSearching && (
@@ -751,7 +739,7 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* NAVIGATION BAR (MOBILE) */}
+      {/* MOBILE NAV */}
       <nav className="fixed bottom-0 left-0 right-0 bg-[#020617]/90 backdrop-blur-xl border-t border-white/5 z-40 pb-safe">
         <div className="flex justify-around p-4">
           <button
@@ -760,29 +748,17 @@ const App: React.FC = () => {
               state.view === 'trending' ? 'text-cyan-400' : 'text-slate-500'
             }`}
           >
-            <Home
-              size={24}
-              strokeWidth={state.view === 'trending' ? 2.5 : 2}
-            />
-            <span className="text-[10px] font-bold uppercase tracking-wide">
-              Home
-            </span>
+            <Home size={24} strokeWidth={state.view === 'trending' ? 2.5 : 2} />
+            <span className="text-[10px] font-bold uppercase tracking-wide">Home</span>
           </button>
           <button
-            onClick={() =>
-              setState((prev) => ({ ...prev, view: 'library' }))
-            }
+            onClick={() => setState((prev) => ({ ...prev, view: 'library' }))}
             className={`flex flex-col items-center gap-1.5 transition-colors ${
               state.view === 'library' ? 'text-cyan-400' : 'text-slate-500'
             }`}
           >
-            <Library
-              size={24}
-              strokeWidth={state.view === 'library' ? 2.5 : 2}
-            />
-            <span className="text-[10px] font-bold uppercase tracking-wide">
-              My List
-            </span>
+            <Library size={24} strokeWidth={state.view === 'library' ? 2.5 : 2} />
+            <span className="text-[10px] font-bold uppercase tracking-wide">My List</span>
           </button>
         </div>
       </nav>
@@ -791,18 +767,12 @@ const App: React.FC = () => {
       {state.selectedItem && (
         <DetailView
           item={state.selectedItem}
-          onClose={() =>
-            setState((prev) => ({ ...prev, selectedItem: null }))
-          }
+          onClose={() => setState((prev) => ({ ...prev, selectedItem: null }))}
           apiKey={tmdbKey}
           onToggleFavorite={toggleFavorite}
           onToggleWatchlist={toggleWatchlist}
-          isFavorite={state.favorites.some(
-            (f) => f.id === state.selectedItem?.id
-          )}
-          isWatchlist={state.watchlist.some(
-            (w) => w.id === state.selectedItem?.id
-          )}
+          isFavorite={state.favorites.some((f) => f.id === state.selectedItem?.id)}
+          isWatchlist={state.watchlist.some((w) => w.id === state.selectedItem?.id)}
           onCastClick={handleCastClick}
           onEpisodeClick={handleEpisodeClick}
           userRatings={state.userRatings}
@@ -815,9 +785,7 @@ const App: React.FC = () => {
       {state.selectedPerson && (
         <PersonView
           person={state.selectedPerson}
-          onClose={() =>
-            setState((prev) => ({ ...prev, selectedPerson: null }))
-          }
+          onClose={() => setState((prev) => ({ ...prev, selectedPerson: null }))}
           onMediaClick={handleCardClick}
         />
       )}
@@ -826,9 +794,7 @@ const App: React.FC = () => {
         <EpisodeDetailView
           episode={state.selectedEpisode}
           showTitle={(state.selectedEpisode as any).show_name}
-          onClose={() =>
-            setState((prev) => ({ ...prev, selectedEpisode: null }))
-          }
+          onClose={() => setState((prev) => ({ ...prev, selectedEpisode: null }))}
           onRate={rateItem}
           userRating={state.userRatings[String(state.selectedEpisode.id)]}
           ratingsCache={ratingsCache}
