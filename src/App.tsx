@@ -261,6 +261,7 @@ const App: React.FC = () => {
           (showDetails as any).external_ids?.imdb_id ?? null;
         (episodeDetails as any).show_tvdb_id =
           (showDetails as any).external_ids?.tvdb_id ?? null;
+(episodeDetails as any).show_id = showId; // <-- ADD THIS
 
         setState((prev) => ({
           ...prev,
@@ -328,15 +329,16 @@ const App: React.FC = () => {
 
       // If we already have the show loaded in selectedItem (DetailView open),
       // reuse its external_ids. Otherwise, fetch show detail for external ids.
-      if (state.selectedItem && (state.selectedItem as any).id === showId) {
-        const show: any = state.selectedItem;
-        (episodeDetails as any).show_name =
-          show.title || show.name || '';
-        (episodeDetails as any).show_imdb_id =
-          show.external_ids?.imdb_id ?? null;
-        (episodeDetails as any).show_tvdb_id =
-          show.external_ids?.tvdb_id ?? null;
-      } else {
+      if (state.selectedItem) {
+  const show: any = state.selectedItem;
+  (episodeDetails as any).show_name =
+    show.title || show.name || '';
+  (episodeDetails as any).show_imdb_id =
+    show.external_ids?.imdb_id ?? null;
+  (episodeDetails as any).show_tvdb_id =
+    show.external_ids?.tvdb_id ?? null;
+  (episodeDetails as any).show_id = show.id ?? undefined; // <-- ADD THIS
+} else {
         // Fetch show details in case not present
         const showDetails = await tmdb.getDetails(tmdbKey, 'tv', showId);
         (episodeDetails as any).show_name =
