@@ -9,6 +9,8 @@ interface HorizontalCarouselProps {
   onItemClick: (item: MediaItem) => void;
   accentColor?: string;
   emptyMessage?: string;
+  ratingsCache?: any; // ratings cache hook result
+  useOmdbRatings?: boolean;
 }
 
 /**
@@ -21,6 +23,8 @@ const HorizontalCarousel: React.FC<HorizontalCarouselProps> = ({
   onItemClick,
   accentColor = 'cyan',
   emptyMessage = 'No items available right now.',
+  ratingsCache,
+  useOmdbRatings = true,
 }) => {
   const colorClasses = {
     cyan: 'bg-cyan-500',
@@ -53,7 +57,7 @@ const HorizontalCarousel: React.FC<HorizontalCarouselProps> = ({
                 key={item.id}
                 className="flex-shrink-0 w-[160px] sm:w-[180px] md:w-[200px] snap-start"
               >
-                <MediaCard item={item} onClick={onItemClick} />
+                <MediaCard item={item} onClick={onItemClick} ratingsCache={ratingsCache} useOmdbRatings={useOmdbRatings} />
               </div>
             ))}
           </div>

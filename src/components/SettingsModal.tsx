@@ -6,7 +6,9 @@ interface SettingsModalProps {
   currentKey: string;
   currentGeminiKey: string;
   currentOpenAIKey: string;
-  onSave: (tmdbKey: string, geminiKey: string, openaiKey: string) => void;
+  currentOmdbKey: string;
+  useOmdbRatings: boolean;
+  onSave: (tmdbKey: string, geminiKey: string, openaiKey: string, omdbKey: string, useOmdbRatings: boolean) => void;
   onClose: () => void;
   isOpen: boolean;
 }
@@ -15,6 +17,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   currentKey,
   currentGeminiKey,
   currentOpenAIKey,
+  currentOmdbKey,
+  useOmdbRatings,
   onSave,
   onClose,
   isOpen,
@@ -23,6 +27,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [keyInput, setKeyInput] = useState(currentKey || '');
   const [geminiKeyInput, setGeminiKeyInput] = useState(currentGeminiKey || '');
   const [openaiKeyInput, setOpenaiKeyInput] = useState(currentOpenAIKey || '');
+  const [omdbKeyInput, setOmdbKeyInput] = useState(currentOmdbKey || '');
+  const [useOmdbToggle, setUseOmdbToggle] = useState(useOmdbRatings);
   const [status, setStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
 
   // …and kept in sync if props change (e.g. when Firebase finishes loading)
@@ -38,12 +44,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     setOpenaiKeyInput(currentOpenAIKey || '');
   }, [currentOpenAIKey]);
 
+  useEffect(() => {
+    setOmdbKeyInput(currentOmdbKey || '');
+  }, [currentOmdbKey]);
+
+  useEffect(() => {
+    setUseOmdbToggle(useOmdbRatings);
+  }, [useOmdbRatings]);
+
   if (!isOpen) return null;
 
   const handleSave = async () => {
     const trimmedTmdb = keyInput.trim();
     const trimmedGemini = geminiKeyInput.trim();
     const trimmedOpenAI = openaiKeyInput.trim();
+    const trimmedOmdb = omdbKeyInput.trim();
 
     if (!trimmedTmdb) {
       setStatus('invalid');
@@ -58,7 +73,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
       if (isValid) {
         setStatus('valid');
         // Let parent (App.tsx) update state + Firebase
-        onSave(trimmedTmdb, trimmedGemini, trimmedOpenAI);
+        onSave(trimmedTmdb, trimmedGemini, trimmedOpenAI, trimmedOmdb, useOmdbToggle);
 
         // Close after a short success flash
         setTimeout(() => {
@@ -172,6 +187,57 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             </a>
             .
           </p>
+        </div>
+
+        {/* OMDb Section */}
+        <div className="space-y-4 mb-6 pt-4 border-t border-slate-800">
+          <div>
+            <label className="text-xs font-bold uppercase text-slate-500 block mb-1 flex items-center gap-1">
+              <Sparkles size={12} /> OMDb API Key (Optional)
+            </label>
+            <input
+              type="text"
+              value={omdbKeyInput}
+              onChange={(e) => {
+                setOmdbKeyInput(e.target.value);
+              }}
+              placeholder="Enter OMDb API key..."
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-amber-500 transition font-mono text-xs"
+            />
+          </div>
+          <p className="text-slate-500 text-xs">
+            Optional for IMDb, Metacritic, and Rotten Tomatoes ratings. Get it from{' '}
+            <a
+              href="https://www.omdbapi.com/apikey.aspx"
+              target="_blank"
+              rel="noreferrer"
+              className="text-amber-400 hover:underline"
+            >
+              OMDb API
+            </a>
+            .
+          </p>
+          
+          {/* Toggle for OMDb Ratings */}
+          <div className="flex items-center justify-between pt-2">
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-slate-300">Use OMDb Ratings</span>
+              <span className="text-xs text-slate-500">Show IMDb/Metacritic/RT ratings instead of TMDB only</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setUseOmdbToggle(!useOmdbToggle)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                useOmdbToggle ? 'bg-amber-500' : 'bg-slate-700'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  useOmdbToggle ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
         </div>
 
         {status === 'invalid' && (
