@@ -11,6 +11,8 @@ interface UseCloudSyncProps {
   openaiKey: string;
   omdbKey: string;
   useOmdbRatings: boolean;
+  showEpisodeImdbOnCards?: boolean;
+  showEpisodeImdbOnSeasonList?: boolean;
   /**
    * Called when cloud has API keys – should update local key state + localStorage.
    */
@@ -19,7 +21,9 @@ interface UseCloudSyncProps {
     geminiKey: string,
     openaiKey: string,
     omdbKey: string,
-    useOmdbRatings: boolean
+    useOmdbRatings: boolean,
+    showEpisodeImdbOnCards?: boolean,
+    showEpisodeImdbOnSeasonList?: boolean
   ) => void;
 }
 
@@ -37,6 +41,8 @@ export function useCloudSync({
   openaiKey,
   omdbKey,
   useOmdbRatings,
+  showEpisodeImdbOnCards,
+  showEpisodeImdbOnSeasonList,
   updateKeysFromCloud,
 }: UseCloudSyncProps) {
   const [syncing, setSyncing] = useState(false);
@@ -76,6 +82,8 @@ export function useCloudSync({
         const nextOpenaiKey = cloud.openaiKey ?? openaiKey ?? '';
         const nextOmdbKey = cloud.omdbKey ?? omdbKey ?? '';
         const nextUseOmdbRatings = cloud.useOmdbRatings ?? useOmdbRatings ?? true;
+        const nextShowEpisodeImdbOnCards = cloud.showEpisodeImdbOnCards ?? showEpisodeImdbOnCards ?? false;
+        const nextShowEpisodeImdbOnSeasonList = cloud.showEpisodeImdbOnSeasonList ?? showEpisodeImdbOnSeasonList ?? false;
 
         if (cancelled) return;
 
@@ -94,7 +102,7 @@ export function useCloudSync({
 
         // Tell the key hook to update its state + localStorage
         if (updateKeysFromCloud) {
-          updateKeysFromCloud(nextTmdbKey, nextGeminiKey, nextOpenaiKey, nextOmdbKey, nextUseOmdbRatings);
+          updateKeysFromCloud(nextTmdbKey, nextGeminiKey, nextOpenaiKey, nextOmdbKey, nextUseOmdbRatings, nextShowEpisodeImdbOnCards, nextShowEpisodeImdbOnSeasonList);
         } else {
           // If callback not provided, at least keep localStorage consistent
           localStorage.setItem('tmdb_key', nextTmdbKey);
@@ -102,6 +110,8 @@ export function useCloudSync({
           localStorage.setItem('openai_key', nextOpenaiKey);
           localStorage.setItem('omdb_key', nextOmdbKey);
           localStorage.setItem('use_omdb_ratings', String(nextUseOmdbRatings));
+          localStorage.setItem('show_episode_imdb_on_cards', String(nextShowEpisodeImdbOnCards));
+          localStorage.setItem('show_episode_imdb_on_season_list', String(nextShowEpisodeImdbOnSeasonList));
         }
 
         // Set the "last synced" snapshot to exactly what we'll push later
@@ -114,6 +124,8 @@ export function useCloudSync({
           openaiKey: nextOpenaiKey,
           omdbKey: nextOmdbKey,
           useOmdbRatings: nextUseOmdbRatings,
+          showEpisodeImdbOnCards: nextShowEpisodeImdbOnCards,
+          showEpisodeImdbOnSeasonList: nextShowEpisodeImdbOnSeasonList,
         });
       } catch (err) {
         console.error('Error loading user cloud data:', err);
@@ -132,7 +144,7 @@ export function useCloudSync({
     };
     // 🔴 IMPORTANT: we intentionally DO NOT include updateKeysFromCloud here
     // or it would re-run on every render. We only want this when `user` changes.
-  }, [user, setState, tmdbKey, geminiKey, openaiKey, omdbKey, useOmdbRatings]);
+  }, [user, setState, tmdbKey, geminiKey, openaiKey, omdbKey, useOmdbRatings, showEpisodeImdbOnCards, showEpisodeImdbOnSeasonList]);
 
   // ------------ CONTINUOUS SYNC TO CLOUD WHEN DATA CHANGES ------------
   useEffect(() => {
@@ -148,6 +160,8 @@ export function useCloudSync({
         openaiKey,
         omdbKey,
         useOmdbRatings,
+        showEpisodeImdbOnCards,
+        showEpisodeImdbOnSeasonList,
       };
 
       const currentDataString = JSON.stringify(dataToSync);
@@ -183,6 +197,8 @@ export function useCloudSync({
     openaiKey,
     omdbKey,
     useOmdbRatings,
+    showEpisodeImdbOnCards,
+    showEpisodeImdbOnSeasonList,
   ]);
 
   return {

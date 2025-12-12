@@ -15,6 +15,7 @@ interface EpisodeDetailViewProps {
   userRating?: number;
   ratingsCache?: any; // supports getEpisodeCached(seriesImdb, season, episode) + refreshEpisode(...)
   useOmdbRatings?: boolean;
+  showEpisodeImdbOnSeasonList?: boolean;
 }
 
 const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
@@ -25,6 +26,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
   userRating,
   ratingsCache,
   useOmdbRatings = true,
+  showEpisodeImdbOnSeasonList = false,
 }) => {
   const airYear = episode.air_date ? new Date(episode.air_date).getFullYear() : undefined;
   const reviews: Review[] = episode.reviews?.results || [];
