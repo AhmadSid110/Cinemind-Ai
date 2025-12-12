@@ -35,6 +35,7 @@ import { useLibrary } from './hooks/useLibrary';
 import { useHomeFeed } from './hooks/useHomeFeed';
 import { useMediaSearch } from './hooks/useMediaSearch';
 import { useRatingsCache } from './hooks/useRatingsCache';
+import { useCloudCacheSync } from './hooks/useCloudCacheSync';
 
 const App: React.FC = () => {
   // ---------- AUTH / KEYS ----------
@@ -116,6 +117,12 @@ const App: React.FC = () => {
   const [libraryFilter, setLibraryFilter] =
     useState<'all' | 'movie' | 'tv' | 'animation'>('all');
 
+  // ---------- CLOUD SYNC STATE ----------
+  const [enableCloudSync, setEnableCloudSync] = useState<boolean>(() => {
+    const v = localStorage.getItem('enableCloudSync');
+    return v === 'true';
+  });
+
   // ---------- HOME FEED ----------
   const {
     trendingMovies,
@@ -129,6 +136,13 @@ const App: React.FC = () => {
     tmdbApiKey: tmdbKey,
     omdbApiKey: useOmdbRatings ? omdbKey : '',
     ttlMs: 1000 * 60 * 60 * 24, // 24 hours
+  });
+
+  // ---------- CLOUD CACHE SYNC ----------
+  useCloudCacheSync({
+    user,
+    ratingsCache,
+    enabled: !!enableCloudSync,
   });
 
   // Fetch OMDb ratings for home feed (if enabled)
@@ -930,8 +944,11 @@ const App: React.FC = () => {
         useOmdbRatings={useOmdbRatings}
         currentShowEpisodeImdbOnCards={!!showEpisodeImdbOnCards}
         currentShowEpisodeImdbOnSeasonList={!!showEpisodeImdbOnSeasonList}
-        onSave={async (key, geminiKey, openaiKey, omdbKey, useOmdb, showOnCards, showInSeason) => {
+        currentCloudSync={enableCloudSync}
+        onSave={async (key, geminiKey, openaiKey, omdbKey, useOmdb, showOnCards, showInSeason, enableCloud) => {
           saveKeys(key, geminiKey, openaiKey, omdbKey, useOmdb, showOnCards, showInSeason);
+          setEnableCloudSync(!!enableCloud);
+          localStorage.setItem('enableCloudSync', !!enableCloud ? 'true' : 'false');
         }}
       />
     </div>

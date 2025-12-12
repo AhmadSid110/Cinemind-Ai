@@ -255,6 +255,12 @@ export function useRatingsCache({
     try { localStorage.removeItem(STORAGE_KEY); } catch {}
   }
 
+  // Expose importMap for cloud sync
+  function importMap(m: Record<string, RatingEntry>) {
+    // Replace map with provided map (caller must ensure it fits limits)
+    setMap(() => ({ ...(m || {}) }));
+  }
+
   return {
     // movie/show
     getCached,
@@ -266,5 +272,6 @@ export function useRatingsCache({
     ensureForList,
     clearCache,
     rawMap: map,
+    importMap, // <-- added for cloud sync
   };
 }
