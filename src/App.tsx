@@ -26,6 +26,7 @@ import PersonView from './components/PersonView';
 import EpisodeDetailView from './components/EpisodeDetailView';
 import SettingsModal from './components/SettingsModal';
 import HorizontalCarousel from './components/HorizontalCarousel';
+import AuthModal from './components/AuthModal';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
@@ -112,6 +113,7 @@ const App: React.FC = () => {
   });
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(!tmdbKey);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const [libraryTab, setLibraryTab] =
     useState<'favorites' | 'watchlist'>('favorites');
   const [libraryFilter, setLibraryFilter] =
@@ -694,11 +696,11 @@ const App: React.FC = () => {
               </button>
             ) : (
               <button
-                onClick={handleLogin}
+                onClick={() => setAuthModalOpen(true)}
                 className="flex items-center gap-2 px-3 py-2 text-xs md:text-sm rounded-xl bg-slate-900/60 border border-white/10 hover:border-cyan-400/60 hover:bg-cyan-500/10 transition"
               >
                 <LogIn size={16} />
-                <span className="hidden md:inline">Sign in with Google</span>
+                <span className="hidden md:inline">Sign in</span>
               </button>
             )}
 
@@ -951,6 +953,8 @@ const App: React.FC = () => {
           localStorage.setItem('enableCloudSync', !!enableCloud ? 'true' : 'false');
         }}
       />
+
+      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
     </div>
   );
 };
