@@ -1,18 +1,33 @@
 // src/hooks/useCloudCacheSync.ts
 import { useEffect, useRef } from "react";
-import { fetchUserRatingsCache, writeUserRatingsCache } from "../services/cloudCacheService";
+import { fetchUserRatingsCache, writeUserRatingsCache, RatingEntry } from "../services/cloudCacheService";
 import { mergeRatingsMaps } from "../services/cacheMerge";
+
+// Delay before pushing merged cache back to cloud (to avoid race conditions with multiple devices)
+const CLOUD_MERGE_DELAY_MS = 1200;
+
+// Debounce time for uploading local changes to cloud (to minimize Firestore write costs)
+const UPLOAD_DEBOUNCE_MS = 2200;
+
+interface RatingsCache {
+  rawMap: Record<string, RatingEntry>;
+  importMap?: (map: Record<string, RatingEntry>) => void;
+}
+
+interface User {
+  uid: string;
+}
 
 export function useCloudCacheSync({
   user,
   ratingsCache,
   enabled,
 }: {
-  user: any | null;
-  ratingsCache: any | null;
+  user: User | null;
+  ratingsCache: RatingsCache | null;
   enabled: boolean;
 }) {
-  const uploadDebounce = useRef<any>(null);
+  const uploadDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // On login: download, merge, import into local cache
   useEffect(() => {
@@ -33,7 +48,7 @@ export function useCloudCacheSync({
         // do this after a tiny delay to avoid racing with multiple devices
         setTimeout(() => {
           writeUserRatingsCache(user.uid, merged).catch(console.error);
-        }, 1200);
+        }, CLOUD_MERGE_DELAY_MS);
       } catch (e) {
         console.error("Cloud sync download/merge failed", e);
       }
@@ -63,7 +78,7 @@ export function useCloudCacheSync({
     uploadDebounce.current = setTimeout(() => {
       upload();
       uploadDebounce.current = null;
-    }, 2200);
+    }, UPLOAD_DEBOUNCE_MS);
 
     return () => {
       if (uploadDebounce.current) {
