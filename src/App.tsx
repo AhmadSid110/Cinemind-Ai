@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Home,
   Library,
@@ -296,7 +296,7 @@ const App: React.FC = () => {
   // We'll push application navigation states onto the browser history stack.
   // The `appHistory` state object uses `type` to indicate what UI is active.
   // Examples: { type: 'home' }, { type: 'detail', mediaType: 'movie', id: 123 }, { type: 'episode', showId: 45, season: 1, episode: 2 }, { type: 'settings' }, { type: 'auth', mode: 'signin' }
-  const pushAppState = (stateObj: any, replace: boolean = false) => {
+  const pushAppState = useCallback((stateObj: any, replace: boolean = false) => {
     try {
       const urlHash = (() => {
         if (!stateObj) return '/';
@@ -320,7 +320,7 @@ const App: React.FC = () => {
       // If History API unavailable, ignore
       console.warn('pushAppState failed', e);
     }
-  };
+  }, []);
 
   // On mount: set a base replaceState so that back has an internal entry
   useEffect(() => {
@@ -438,8 +438,7 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener('popstate', onPop);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [pushAppState, tmdbKey, state.selectedItem]);
 
   // ---------- PERSIST LOCAL STATE ----------
   useEffect(() => {
