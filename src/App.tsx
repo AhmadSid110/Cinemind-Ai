@@ -227,7 +227,7 @@ const App: React.FC = () => {
     let cancelled = false;
 
     (async () => {
-      const concurrency = 3;
+      const concurrency = 6;
       let i = 0;
       // simple worker pool
       const workers: Promise<void>[] = [];
