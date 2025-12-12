@@ -252,10 +252,8 @@ const App: React.FC = () => {
                 if (isEpisode && sid === id) {
                   const season = (it as any).season_number;
                   const episodeNum = (it as any).episode_number;
-                  // background refresh; don't await
-                  try {
-                    ratingsCache.refreshEpisode?.(imdb, season, episodeNum, false).catch(() => {});
-                  } catch (e) {}
+                  // background refresh; don't await, errors are logged in refreshEpisode
+                  ratingsCache.refreshEpisode(imdb, season, episodeNum, false).catch(() => {});
                 }
               });
             }
@@ -519,12 +517,15 @@ const App: React.FC = () => {
         let item = originalItem;
         if (isEpisode) {
           const showId = (originalItem as any).show_id ?? (originalItem as any).tv_id ?? null;
-          const showImdb = showId ? showImdbMap[showId] ?? null : (originalItem as any).show_imdb_id ?? null;
+          const existingShowImdb = (originalItem as any).show_imdb_id ?? null;
+          const fetchedShowImdb = showId ? showImdbMap[showId] ?? null : null;
+          const showImdb = fetchedShowImdb ?? existingShowImdb;
+          
           if (showImdb || showId) {
             item = {
               ...originalItem,
-              show_imdb_id: showImdb ?? (originalItem as any).show_imdb_id ?? null,
-              show_id: showId ?? (originalItem as any).show_id ?? (originalItem as any).tv_id ?? null,
+              show_imdb_id: showImdb,
+              show_id: showId,
             } as MediaItem;
           }
         }
