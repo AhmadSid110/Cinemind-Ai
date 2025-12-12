@@ -187,6 +187,95 @@ const App: React.FC = () => {
     }
   }, [searchResults, tmdbKey, omdbKey, useOmdbRatings, ratingsCache]);
 
+  // Add state to store showId -> imdbId mapping
+  const [showImdbMap, setShowImdbMap] = useState<Record<number, string | null>>({});
+
+  // utility: fetch and populate imdb for a single show id (returns imdbId or null)
+  async function fetchShowImdb(showId: number) {
+    try {
+      const details = await tmdb.getDetails(tmdbKey, 'tv', showId);
+      const imdb = (details as any)?.external_ids?.imdb_id ?? null;
+      return imdb;
+    } catch (err) {
+      console.warn('fetchShowImdb failed for', showId, err);
+      return null;
+    }
+  }
+
+  // Prefetch show imdb ids for episodes in search results and queue episode OMDb refreshes
+  useEffect(() => {
+    if (!tmdbKey) return;
+    if (!searchResults || searchResults.length === 0) return;
+    if (!ratingsCache) return; // ratings cache needed for background refresh
+
+    // collect unique showIds that appear in searchResults' episode items
+    const showIdsToFetch = new Set<number>();
+    searchResults.forEach((it) => {
+      const isEpisode = !!(it as any).episode_number;
+      if (!isEpisode) return;
+      // prefer existing show_id or tv_id injected by whatever produced the result
+      const showId = (it as any).show_id ?? (it as any).tv_id ?? null;
+      if (showId && !(showId in showImdbMap)) {
+        showIdsToFetch.add(showId);
+      }
+    });
+
+    if (showIdsToFetch.size === 0) return;
+
+    // Limit concurrency to avoid spikes (3 at a time)
+    const ids = Array.from(showIdsToFetch);
+    let cancelled = false;
+
+    (async () => {
+      const concurrency = 3;
+      let i = 0;
+      // simple worker pool
+      const workers: Promise<void>[] = [];
+      const startWorker = async () => {
+        while (!cancelled && i < ids.length) {
+          const id = ids[i++];
+          try {
+            const imdb = await fetchShowImdb(id);
+            if (cancelled) return;
+            setShowImdbMap((prev) => {
+              // don't overwrite an existing mapping
+              if (prev[id] !== undefined) return prev;
+              return { ...prev, [id]: imdb };
+            });
+
+            // if we found imdb and ratingsCache supports episode refresh, enqueue episode-level refresh for episodes that match this show
+            if (imdb && typeof ratingsCache.refreshEpisode === 'function') {
+              // find all episode entries in searchResults that belong to this show id
+              searchResults.forEach((it) => {
+                const isEpisode = !!(it as any).episode_number;
+                const sid = (it as any).show_id ?? (it as any).tv_id ?? null;
+                if (isEpisode && sid === id) {
+                  const season = (it as any).season_number;
+                  const episodeNum = (it as any).episode_number;
+                  // background refresh; don't await, errors are logged in refreshEpisode
+                  ratingsCache.refreshEpisode(imdb, season, episodeNum, false).catch(() => {});
+                }
+              });
+            }
+          } catch (e) {
+            // ignore single failures
+            console.warn('error fetching show imdb for id', id, e);
+          }
+        }
+      };
+
+      // start N workers
+      for (let w = 0; w < concurrency; w++) {
+        workers.push(startWorker());
+      }
+      await Promise.all(workers);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchResults, tmdbKey, ratingsCache, showImdbMap]);
+
   // ---------- PERSIST LOCAL STATE ----------
   useEffect(() => {
     localStorage.setItem('favorites', JSON.stringify(state.favorites));
@@ -422,17 +511,37 @@ const App: React.FC = () => {
   // ---------- HELPERS ----------
   const renderGrid = (items: MediaItem[], showRank: boolean = false) => (
     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-      {items.map((item, idx) => (
-        <MediaCard
-          key={`${item.id}-${(item as any).episode_number || 0}`}
-          item={item}
-          onClick={handleCardClick}
-          rank={showRank ? idx + 1 : undefined}
-          ratingsCache={ratingsCache}
-          useOmdbRatings={useOmdbRatings}
-          showEpisodeImdbOnCards={showEpisodeImdbOnCards}
-        />
-      ))}
+      {items.map((originalItem, idx) => {
+        // clone and augment episodes with show_imdb_id from local map if available
+        const isEpisode = !!(originalItem as any).episode_number;
+        let item = originalItem;
+        if (isEpisode) {
+          const showId = (originalItem as any).show_id ?? (originalItem as any).tv_id ?? null;
+          const existingShowImdb = (originalItem as any).show_imdb_id ?? null;
+          const fetchedShowImdb = showId ? showImdbMap[showId] ?? null : null;
+          const showImdb = fetchedShowImdb ?? existingShowImdb;
+          
+          if (showImdb || showId) {
+            item = {
+              ...originalItem,
+              show_imdb_id: showImdb,
+              show_id: showId,
+            } as MediaItem;
+          }
+        }
+
+        return (
+          <MediaCard
+            key={`${item.id}-${(item as any).episode_number || 0}`}
+            item={item}
+            onClick={handleCardClick}
+            rank={showRank ? idx + 1 : undefined}
+            ratingsCache={ratingsCache}
+            useOmdbRatings={useOmdbRatings}
+            showEpisodeImdbOnCards={showEpisodeImdbOnCards}
+          />
+        );
+      })}
     </div>
   );
 
