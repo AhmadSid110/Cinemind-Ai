@@ -8,7 +8,23 @@ interface SettingsModalProps {
   currentOpenAIKey: string;
   currentOmdbKey: string;
   useOmdbRatings: boolean;
-  onSave: (tmdbKey: string, geminiKey: string, openaiKey: string, omdbKey: string, useOmdbRatings: boolean) => void;
+  // NEW toggles (current values passed from App)
+  currentShowEpisodeImdbOnCards: boolean;
+  currentShowEpisodeImdbOnSeasonList: boolean;
+
+  /**
+   * onSave's signature extended:
+   * onSave(tmdbKey, geminiKey, openaiKey, omdbKey, useOmdbRatings, showEpisodeImdbOnCards, showEpisodeImdbOnSeasonList)
+   */
+  onSave: (
+    tmdbKey: string,
+    geminiKey: string,
+    openaiKey: string,
+    omdbKey: string,
+    useOmdbRatings: boolean,
+    showEpisodeImdbOnCards: boolean,
+    showEpisodeImdbOnSeasonList: boolean
+  ) => void;
   onClose: () => void;
   isOpen: boolean;
 }
@@ -19,6 +35,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   currentOpenAIKey,
   currentOmdbKey,
   useOmdbRatings,
+  currentShowEpisodeImdbOnCards,
+  currentShowEpisodeImdbOnSeasonList,
   onSave,
   onClose,
   isOpen,
@@ -29,6 +47,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [openaiKeyInput, setOpenaiKeyInput] = useState(currentOpenAIKey || '');
   const [omdbKeyInput, setOmdbKeyInput] = useState(currentOmdbKey || '');
   const [useOmdbToggle, setUseOmdbToggle] = useState(useOmdbRatings);
+  // NEW toggles local state
+  const [showEpisodeImdbOnCards, setShowEpisodeImdbOnCards] = useState<boolean>(currentShowEpisodeImdbOnCards);
+  const [showEpisodeImdbOnSeasonList, setShowEpisodeImdbOnSeasonList] = useState<boolean>(currentShowEpisodeImdbOnSeasonList);
+
   const [status, setStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
 
   // …and kept in sync if props change (e.g. when Firebase finishes loading)
@@ -52,6 +74,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     setUseOmdbToggle(useOmdbRatings);
   }, [useOmdbRatings]);
 
+  useEffect(() => {
+    setShowEpisodeImdbOnCards(currentShowEpisodeImdbOnCards);
+  }, [currentShowEpisodeImdbOnCards]);
+
+  useEffect(() => {
+    setShowEpisodeImdbOnSeasonList(currentShowEpisodeImdbOnSeasonList);
+  }, [currentShowEpisodeImdbOnSeasonList]);
+
   if (!isOpen) return null;
 
   const handleSave = async () => {
@@ -72,8 +102,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
       if (isValid) {
         setStatus('valid');
-        // Let parent (App.tsx) update state + Firebase
-        onSave(trimmedTmdb, trimmedGemini, trimmedOpenAI, trimmedOmdb, useOmdbToggle);
+        // Let parent (App.tsx) update state + persist
+        onSave(
+          trimmedTmdb,
+          trimmedGemini,
+          trimmedOpenAI,
+          trimmedOmdb,
+          useOmdbToggle,
+          showEpisodeImdbOnCards,
+          showEpisodeImdbOnSeasonList
+        );
 
         // Close after a short success flash
         setTimeout(() => {
@@ -91,7 +129,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-slate-700 w-full max-w-md p-8 rounded-2xl shadow-2xl">
+      <div className="bg-slate-900 border border-slate-700 w-full max-w-lg p-8 rounded-2xl shadow-2xl">
         <div className="flex items-center gap-3 mb-6 text-cyan-400">
           <Key size={32} />
           <h2 className="text-2xl font-bold text-white">App Configuration</h2>
@@ -234,6 +272,49 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                   useOmdbToggle ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* NEW: Episode IMDb UI toggles */}
+        <div className="space-y-4 mb-6 pt-2 border-t border-slate-800">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-slate-300">Show episode IMDb on cards</span>
+              <span className="text-xs text-slate-500">Display episode-level IMDb rating on home / search cards for episodes (if available)</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowEpisodeImdbOnCards(!showEpisodeImdbOnCards)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                showEpisodeImdbOnCards ? 'bg-amber-500' : 'bg-slate-700'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  showEpisodeImdbOnCards ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-slate-300">Show episode IMDb in season listings</span>
+              <span className="text-xs text-slate-500">Show episode IMDb rating alongside episodes inside the season list on the Details page</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowEpisodeImdbOnSeasonList(!showEpisodeImdbOnSeasonList)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                showEpisodeImdbOnSeasonList ? 'bg-amber-500' : 'bg-slate-700'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  showEpisodeImdbOnSeasonList ? 'translate-x-6' : 'translate-x-1'
                 }`}
               />
             </button>

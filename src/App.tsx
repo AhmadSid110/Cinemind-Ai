@@ -45,6 +45,8 @@ const App: React.FC = () => {
     openaiKey,
     omdbKey,
     useOmdbRatings,
+    showEpisodeImdbOnCards,
+    showEpisodeImdbOnSeasonList,
     saveKeys,
     updateKeysFromCloud,
   } = useApiKeys(user);
@@ -96,6 +98,8 @@ const App: React.FC = () => {
     openaiKey,
     omdbKey,
     useOmdbRatings,
+    showEpisodeImdbOnCards,
+    showEpisodeImdbOnSeasonList,
     updateKeysFromCloud,
   });
 
@@ -426,6 +430,7 @@ const App: React.FC = () => {
           rank={showRank ? idx + 1 : undefined}
           ratingsCache={ratingsCache}
           useOmdbRatings={useOmdbRatings}
+          showEpisodeImdbOnCards={showEpisodeImdbOnCards}
         />
       ))}
     </div>
@@ -781,6 +786,7 @@ const App: React.FC = () => {
           onRate={rateItem}
           ratingsCache={ratingsCache}
           useOmdbRatings={useOmdbRatings}
+          showEpisodeImdbOnSeasonList={showEpisodeImdbOnSeasonList}
         />
       )}
 
@@ -801,6 +807,7 @@ const App: React.FC = () => {
           userRating={state.userRatings[String(state.selectedEpisode.id)]}
           ratingsCache={ratingsCache}
           useOmdbRatings={useOmdbRatings}
+          showEpisodeImdbOnSeasonList={showEpisodeImdbOnSeasonList}
         />
       )}
 
@@ -812,8 +819,10 @@ const App: React.FC = () => {
         currentOpenAIKey={openaiKey}
         currentOmdbKey={omdbKey}
         useOmdbRatings={useOmdbRatings}
-        onSave={async (key, geminiKey, openaiKey, omdbKey, useOmdb) => {
-          saveKeys(key, geminiKey, openaiKey, omdbKey, useOmdb);
+        currentShowEpisodeImdbOnCards={!!showEpisodeImdbOnCards}
+        currentShowEpisodeImdbOnSeasonList={!!showEpisodeImdbOnSeasonList}
+        onSave={async (key, geminiKey, openaiKey, omdbKey, useOmdb, showOnCards, showInSeason) => {
+          saveKeys(key, geminiKey, openaiKey, omdbKey, useOmdb, showOnCards, showInSeason);
         }}
       />
     </div>

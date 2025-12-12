@@ -22,13 +22,23 @@ export function useApiKeys(user: any) {
     const stored = localStorage.getItem('use_omdb_ratings');
     return stored ? stored === 'true' : true; // Default to true (enabled)
   });
+  const [showEpisodeImdbOnCards, setShowEpisodeImdbOnCards] = useState<boolean>(() => {
+    const stored = localStorage.getItem('show_episode_imdb_on_cards');
+    return stored ? stored === 'true' : false; // Default to false (disabled)
+  });
+  const [showEpisodeImdbOnSeasonList, setShowEpisodeImdbOnSeasonList] = useState<boolean>(() => {
+    const stored = localStorage.getItem('show_episode_imdb_on_season_list');
+    return stored ? stored === 'true' : false; // Default to false (disabled)
+  });
 
   const saveKeys = (
     newTmdbKey: string,
     newGeminiKey: string,
     newOpenaiKey: string,
     newOmdbKey: string,
-    newUseOmdbRatings?: boolean
+    newUseOmdbRatings?: boolean,
+    newShowEpisodeImdbOnCards?: boolean,
+    newShowEpisodeImdbOnSeasonList?: boolean
   ) => {
     localStorage.setItem('tmdb_key', newTmdbKey);
     localStorage.setItem('gemini_key', newGeminiKey);
@@ -38,6 +48,16 @@ export function useApiKeys(user: any) {
     if (newUseOmdbRatings !== undefined) {
       localStorage.setItem('use_omdb_ratings', String(newUseOmdbRatings));
       setUseOmdbRatings(newUseOmdbRatings);
+    }
+    
+    if (newShowEpisodeImdbOnCards !== undefined) {
+      localStorage.setItem('show_episode_imdb_on_cards', String(newShowEpisodeImdbOnCards));
+      setShowEpisodeImdbOnCards(newShowEpisodeImdbOnCards);
+    }
+    
+    if (newShowEpisodeImdbOnSeasonList !== undefined) {
+      localStorage.setItem('show_episode_imdb_on_season_list', String(newShowEpisodeImdbOnSeasonList));
+      setShowEpisodeImdbOnSeasonList(newShowEpisodeImdbOnSeasonList);
     }
 
     setTmdbKey(newTmdbKey);
@@ -52,7 +72,9 @@ export function useApiKeys(user: any) {
     cloudGeminiKey: string,
     cloudOpenaiKey: string,
     cloudOmdbKey: string,
-    cloudUseOmdbRatings?: boolean
+    cloudUseOmdbRatings?: boolean,
+    cloudShowEpisodeImdbOnCards?: boolean,
+    cloudShowEpisodeImdbOnSeasonList?: boolean
   ) => {
     if (cloudTmdbKey) {
       setTmdbKey(cloudTmdbKey);
@@ -74,6 +96,14 @@ export function useApiKeys(user: any) {
       setUseOmdbRatings(cloudUseOmdbRatings);
       localStorage.setItem('use_omdb_ratings', String(cloudUseOmdbRatings));
     }
+    if (cloudShowEpisodeImdbOnCards !== undefined) {
+      setShowEpisodeImdbOnCards(cloudShowEpisodeImdbOnCards);
+      localStorage.setItem('show_episode_imdb_on_cards', String(cloudShowEpisodeImdbOnCards));
+    }
+    if (cloudShowEpisodeImdbOnSeasonList !== undefined) {
+      setShowEpisodeImdbOnSeasonList(cloudShowEpisodeImdbOnSeasonList);
+      localStorage.setItem('show_episode_imdb_on_season_list', String(cloudShowEpisodeImdbOnSeasonList));
+    }
   };
 
   return {
@@ -82,6 +112,8 @@ export function useApiKeys(user: any) {
     openaiKey,
     omdbKey,
     useOmdbRatings,
+    showEpisodeImdbOnCards,
+    showEpisodeImdbOnSeasonList,
     saveKeys,
     updateKeysFromCloud,
   };

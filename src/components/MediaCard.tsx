@@ -11,9 +11,11 @@ interface MediaCardProps {
   ratingsCache?: any;
   /** Whether to use OMDb ratings (when false, show only TMDB) */
   useOmdbRatings?: boolean;
+  /** Whether to show episode-level IMDb ratings on cards */
+  showEpisodeImdbOnCards?: boolean;
 }
 
-const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank, ratingsCache, useOmdbRatings = true }) => {
+const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank, ratingsCache, useOmdbRatings = true, showEpisodeImdbOnCards = false }) => {
   const imageUrl = item.poster_path
     ? `https://image.tmdb.org/t/p/w500${item.poster_path}`
     : item.still_path
@@ -25,10 +27,27 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank, ratingsCache
   const year = date ? new Date(date).getFullYear() : 'N/A';
   const isEpisode = !!item.episode_number;
 
-  // Get cached rating if available AND OMDb is enabled
-  const cachedRating = useOmdbRatings && ratingsCache && item.media_type && item.media_type !== 'person'
-    ? ratingsCache.getCached(item.media_type, item.id)
-    : null;
+  // For episodes, attempt to get episode-level IMDb rating if toggle is on
+  let cachedRating = null;
+  if (useOmdbRatings && ratingsCache && item.media_type && item.media_type !== 'person') {
+    if (isEpisode && showEpisodeImdbOnCards) {
+      // Try to get episode-level rating using show_imdb_id from the item
+      const showImdbId = (item as any).show_imdb_id;
+      if (showImdbId && typeof ratingsCache.getEpisodeCached === 'function') {
+        cachedRating = ratingsCache.getEpisodeCached(showImdbId, item.season_number, item.episode_number);
+      }
+      // Fallback to show-level rating if episode rating not available
+      if (!cachedRating?.imdbRating) {
+        const showId = (item as any).show_id || (item as any).tv_id;
+        if (showId) {
+          cachedRating = ratingsCache.getCached('tv', showId);
+        }
+      }
+    } else {
+      // Regular movie/tv rating
+      cachedRating = ratingsCache.getCached(item.media_type, item.id);
+    }
+  }
 
   // Prefer IMDb rating from OMDb (when enabled), fallback to TMDB
   const displayRating = cachedRating?.imdbRating

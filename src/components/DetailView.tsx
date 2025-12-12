@@ -55,6 +55,7 @@ interface DetailViewProps {
   onRate: (itemId: string, rating: number) => void;
   ratingsCache?: any;
   useOmdbRatings?: boolean;
+  showEpisodeImdbOnSeasonList?: boolean;
 }
 
 const HeartIcon: React.FC<{
@@ -82,6 +83,7 @@ const DetailView: React.FC<DetailViewProps> = ({
   onRate,
   ratingsCache,
   useOmdbRatings = true,
+  showEpisodeImdbOnSeasonList = false,
 }) => {
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
@@ -712,34 +714,51 @@ const DetailView: React.FC<DetailViewProps> = ({
 
                 {/* Episode list */}
                 <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                  {episodes.map((ep) => (
-                    <button
-                      key={ep.id}
-                      type="button"
-                      onClick={() =>
-                        onEpisodeClick &&
-                        onEpisodeClick(
-                          item.id,
-                          ep.season_number,
-                          ep.episode_number
-                        )
+                  {episodes.map((ep) => {
+                    // Get episode-level IMDb rating if enabled
+                    let episodeRating = ep.vote_average?.toFixed(1) || 'N/A';
+                    let isImdbRating = false;
+                    
+                    if (showEpisodeImdbOnSeasonList && useOmdbRatings && ratingsCache) {
+                      const seriesImdbId = (item as any).external_ids?.imdb_id;
+                      if (seriesImdbId && typeof ratingsCache.getEpisodeCached === 'function') {
+                        const episodeOmdb = ratingsCache.getEpisodeCached(seriesImdbId, ep.season_number, ep.episode_number);
+                        if (episodeOmdb?.imdbRating) {
+                          episodeRating = episodeOmdb.imdbRating;
+                          isImdbRating = true;
+                        }
                       }
-                      className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-slate-900/60 hover:bg-slate-800 border border-slate-700/70 hover:border-cyan-500/50 text-left text-sm"
-                    >
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-slate-100">
-                          S{ep.season_number} · E{ep.episode_number} — {ep.name}
-                        </span>
-                        <span className="text-xs text-slate-400 line-clamp-1">
-                          {ep.overview}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-amber-300">
-                        <Star size={12} className="fill-amber-400 text-amber-400" />
-                        {ep.vote_average?.toFixed(1)}
-                      </div>
-                    </button>
-                  ))}
+                    }
+                    
+                    return (
+                      <button
+                        key={ep.id}
+                        type="button"
+                        onClick={() =>
+                          onEpisodeClick &&
+                          onEpisodeClick(
+                            item.id,
+                            ep.season_number,
+                            ep.episode_number
+                          )
+                        }
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-slate-900/60 hover:bg-slate-800 border border-slate-700/70 hover:border-cyan-500/50 text-left text-sm"
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-slate-100">
+                            S{ep.season_number} · E{ep.episode_number} — {ep.name}
+                          </span>
+                          <span className="text-xs text-slate-400 line-clamp-1">
+                            {ep.overview}
+                          </span>
+                        </div>
+                        <div className={`flex items-center gap-1 text-xs ${isImdbRating ? 'text-amber-400' : 'text-amber-300'}`}>
+                          <Star size={12} className={`${isImdbRating ? 'fill-amber-500 text-amber-500' : 'fill-amber-400 text-amber-400'}`} />
+                          {episodeRating}
+                        </div>
+                      </button>
+                    );
+                  })}
                   {episodes.length === 0 && !loadingEpisodes && (
                     <p className="text-xs text-slate-500 text-center py-4">
                       No episodes found for this season.
