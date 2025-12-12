@@ -11,10 +11,11 @@ interface SettingsModalProps {
   // NEW toggles (current values passed from App)
   currentShowEpisodeImdbOnCards: boolean;
   currentShowEpisodeImdbOnSeasonList: boolean;
+  currentCloudSync?: boolean;
 
   /**
    * onSave's signature extended:
-   * onSave(tmdbKey, geminiKey, openaiKey, omdbKey, useOmdbRatings, showEpisodeImdbOnCards, showEpisodeImdbOnSeasonList)
+   * onSave(tmdbKey, geminiKey, openaiKey, omdbKey, useOmdbRatings, showEpisodeImdbOnCards, showEpisodeImdbOnSeasonList, enableCloudSync)
    */
   onSave: (
     tmdbKey: string,
@@ -23,7 +24,8 @@ interface SettingsModalProps {
     omdbKey: string,
     useOmdbRatings: boolean,
     showEpisodeImdbOnCards: boolean,
-    showEpisodeImdbOnSeasonList: boolean
+    showEpisodeImdbOnSeasonList: boolean,
+    enableCloudSync: boolean
   ) => void;
   onClose: () => void;
   isOpen: boolean;
@@ -37,6 +39,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   useOmdbRatings,
   currentShowEpisodeImdbOnCards,
   currentShowEpisodeImdbOnSeasonList,
+  currentCloudSync,
   onSave,
   onClose,
   isOpen,
@@ -50,6 +53,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   // NEW toggles local state
   const [showEpisodeImdbOnCards, setShowEpisodeImdbOnCards] = useState<boolean>(currentShowEpisodeImdbOnCards);
   const [showEpisodeImdbOnSeasonList, setShowEpisodeImdbOnSeasonList] = useState<boolean>(currentShowEpisodeImdbOnSeasonList);
+  const [enableCloudSync, setEnableCloudSync] = useState<boolean>(!!currentCloudSync);
 
   const [status, setStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
 
@@ -82,6 +86,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     setShowEpisodeImdbOnSeasonList(currentShowEpisodeImdbOnSeasonList);
   }, [currentShowEpisodeImdbOnSeasonList]);
 
+  useEffect(() => {
+    setEnableCloudSync(!!currentCloudSync);
+  }, [currentCloudSync]);
+
   if (!isOpen) return null;
 
   const handleSave = async () => {
@@ -110,7 +118,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           trimmedOmdb,
           useOmdbToggle,
           showEpisodeImdbOnCards,
-          showEpisodeImdbOnSeasonList
+          showEpisodeImdbOnSeasonList,
+          enableCloudSync
         );
 
         // Close after a short success flash
@@ -128,12 +137,15 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-      <div className="bg-slate-900 border border-slate-700 w-full max-w-lg p-8 rounded-2xl shadow-2xl">
-        <div className="flex items-center gap-3 mb-6 text-cyan-400">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+      <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="flex items-center gap-3 p-8 pb-4 text-cyan-400">
           <Key size={32} />
           <h2 className="text-2xl font-bold text-white">App Configuration</h2>
         </div>
+        
+        {/* Scrollable content area */}
+        <div className="overflow-y-auto px-8 pb-4 flex-1">
 
         {/* TMDB Section */}
         <div className="space-y-4 mb-6">
@@ -321,6 +333,32 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         </div>
 
+        {/* Cloud Sync Toggle */}
+        <div className="space-y-4 pt-2 border-t border-slate-800">
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-slate-300">Sync ratings across devices</span>
+              <span className="text-xs text-slate-500">Upload OMDb cache to your Firestore account (opt-in)</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEnableCloudSync(!enableCloudSync)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                enableCloudSync ? 'bg-emerald-500' : 'bg-slate-700'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  enableCloudSync ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+        </div>
+
+        {/* Status messages and buttons - fixed at bottom */}
+        <div className="px-8 pb-8 pt-4">
         {status === 'invalid' && (
           <div className="flex items-center gap-2 text-red-400 text-sm mb-4 bg-red-400/10 p-2 rounded">
             <AlertTriangle size={16} />
@@ -335,20 +373,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
         )}
 
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-slate-400 hover:text-white transition"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={status === 'checking'}
-            className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold px-6 py-2 rounded-lg flex items-center gap-2 shadow-lg shadow-cyan-900/20"
-          >
-            {status === 'checking' ? 'Verifying...' : 'Save Configuration'}
-          </button>
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-slate-400 hover:text-white transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={status === 'checking'}
+              className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold px-6 py-2 rounded-lg flex items-center gap-2 shadow-lg shadow-cyan-900/20"
+            >
+              {status === 'checking' ? 'Verifying...' : 'Save Configuration'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
