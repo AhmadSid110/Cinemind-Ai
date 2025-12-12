@@ -77,6 +77,11 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
+  const handleBackToSignIn = () => {
+    setMode('signin');
+    setError(null);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="w-full max-w-md bg-slate-900 rounded-2xl p-6 border border-slate-800 shadow-xl">
@@ -108,30 +113,34 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-slate-400">Email</label>
+            <label htmlFor="auth-email" className="text-xs text-slate-400">Email</label>
             <div className="mt-1 flex items-center gap-2">
               <Mail className="text-slate-400" />
               <input
+                id="auth-email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white outline-none"
                 placeholder="you@example.com"
                 type="email"
+                aria-label="Email address"
               />
             </div>
           </div>
 
           {mode !== 'reset' && (
             <div>
-              <label className="text-xs text-slate-400">Password</label>
+              <label htmlFor="auth-password" className="text-xs text-slate-400">Password</label>
               <div className="mt-1 flex items-center gap-2">
                 <Key className="text-slate-400" />
                 <input
+                  id="auth-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white outline-none"
                   placeholder="••••••••"
                   type="password"
+                  aria-label="Password"
                 />
               </div>
             </div>
@@ -175,7 +184,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           </div>
 
           <div className="flex justify-between text-xs text-slate-500 mt-3">
-            <button onClick={() => { setMode('signin'); setError(null); }} className="underline">Back to Sign in</button>
+            <button onClick={handleBackToSignIn} className="underline">Back to Sign in</button>
             <button onClick={onClose} className="underline">Close</button>
           </div>
         </div>

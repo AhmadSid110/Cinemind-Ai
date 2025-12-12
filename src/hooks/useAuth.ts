@@ -11,6 +11,19 @@ import {
 } from '../firebase';
 import type { User } from 'firebase/auth';
 
+/**
+ * Authentication hook that provides methods for user authentication and state management.
+ * Supports Google OAuth and email/password authentication.
+ * 
+ * @returns {Object} Authentication state and methods
+ * @property {User | null} user - Current authenticated user or null
+ * @property {boolean} loading - Whether authentication state is being initialized
+ * @property {Function} login - Sign in with Google popup
+ * @property {Function} loginEmail - Sign in with email and password
+ * @property {Function} register - Register new account with email and password
+ * @property {Function} resetPassword - Send password reset email
+ * @property {Function} logout - Sign out current user
+ */
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -24,7 +37,7 @@ export function useAuth() {
     return () => unsubscribe();
   }, []);
 
-  // Google existing
+  // Google sign-in (existing)
   const login = async () => {
     try {
       return await loginWithGoogle();
