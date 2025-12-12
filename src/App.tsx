@@ -1,5 +1,5 @@
 // src/App.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Home,
   Library,
@@ -292,6 +292,146 @@ const App: React.FC = () => {
     };
   }, [searchResults, tmdbKey, ratingsCache, showImdbMap]);
 
+  // ---------- HISTORY / BACK GESTURE HANDLING ----------
+  // We'll push application navigation states onto the browser history stack.
+  // The `appHistory` state object uses `type` to indicate what UI is active.
+  // Examples: { type: 'home' }, { type: 'detail', mediaType: 'movie', id: 123 }, { type: 'episode', showId: 45, season: 1, episode: 2 }, { type: 'settings' }, { type: 'auth', mode: 'signin' }
+  const pushAppState = useCallback((stateObj: any, replace: boolean = false) => {
+    try {
+      const urlHash = (() => {
+        if (!stateObj) return '/';
+        switch (stateObj.type) {
+          case 'detail': return `/detail/${stateObj.mediaType || stateObj.media_type}/${stateObj.id}`;
+          case 'episode': return `/episode/${stateObj.showId}/s${stateObj.season}e${stateObj.episode}`;
+          case 'person': return `/person/${stateObj.id}`;
+          case 'settings': return `/settings`;
+          case 'auth': return `/auth/${stateObj.mode || 'signin'}`;
+          case 'library': return `/library`;
+          case 'home': default: return '/';
+        }
+      })();
+
+      if (replace) {
+        history.replaceState(stateObj, '', urlHash);
+      } else {
+        history.pushState(stateObj, '', urlHash);
+      }
+    } catch (e) {
+      // If History API unavailable, ignore
+      console.warn('pushAppState failed', e);
+    }
+  }, []);
+
+  // On mount: set a base replaceState so that back has an internal entry
+  useEffect(() => {
+    // Replace initial state with explicit app home state (no history push)
+    pushAppState({ type: 'home' }, true);
+
+    // Popstate listener: map history state -> internal React state
+    const onPop = (ev: PopStateEvent) => {
+      const s = (ev.state as any) ?? { type: 'home' };
+
+      // Map s.type -> update your app state accordingly
+      if (s.type === 'home' || !s.type) {
+        setState((prev) => ({
+          ...prev,
+          view: 'trending',
+          selectedItem: null,
+          selectedPerson: null,
+          selectedEpisode: null,
+          error: null,
+        }));
+        setIsSettingsOpen(false);
+        setAuthModalOpen(false);
+        return;
+      }
+
+      if (s.type === 'detail') {
+        // fetch details and open
+        (async () => {
+          try {
+            const details = await tmdb.getDetails(tmdbKey, s.mediaType || 'movie', s.id);
+            setState((prev) => ({ ...prev, selectedItem: details, selectedEpisode: null, selectedPerson: null }));
+          } catch (err) {
+            console.error('Failed fetching details on popstate', err);
+            setState((prev) => ({ ...prev, error: 'Could not load details.' }));
+          }
+        })();
+        setIsSettingsOpen(false);
+        setAuthModalOpen(false);
+        return;
+      }
+
+      if (s.type === 'episode') {
+        // Close other modals and open episode details (fetch if necessary)
+        (async () => {
+          try {
+            const ep = await tmdb.getEpisodeDetails(tmdbKey, s.showId, s.season, s.episode);
+            // Attach show metadata if available
+            (ep as any).show_id = s.showId;
+            setState((prev) => ({ ...prev, selectedEpisode: ep, selectedItem: null, selectedPerson: null }));
+          } catch (err) {
+            console.error('Failed fetching episode on popstate', err);
+            setState((prev) => ({ ...prev, error: 'Could not load episode details.' }));
+          }
+        })();
+        setIsSettingsOpen(false);
+        setAuthModalOpen(false);
+        return;
+      }
+
+      if (s.type === 'settings') {
+        // open settings modal
+        setIsSettingsOpen(true);
+        setAuthModalOpen(false);
+        setState((prev) => ({ ...prev, selectedItem: null, selectedEpisode: null, selectedPerson: null }));
+        return;
+      }
+
+      if (s.type === 'auth') {
+        // open auth modal
+        setAuthModalOpen(true);
+        setIsSettingsOpen(false);
+        setState((prev) => ({ ...prev, selectedItem: null, selectedEpisode: null, selectedPerson: null }));
+        return;
+      }
+
+      if (s.type === 'library') {
+        setState((prev) => ({ ...prev, view: 'library', selectedItem: null, selectedEpisode: null, selectedPerson: null }));
+        setIsSettingsOpen(false);
+        setAuthModalOpen(false);
+        return;
+      }
+
+      if (s.type === 'person') {
+        // Fetch person details and open
+        (async () => {
+          try {
+            const person = await tmdb.getPersonDetails(tmdbKey, s.id);
+            setState((prev) => ({ ...prev, selectedPerson: person, selectedItem: null, selectedEpisode: null }));
+          } catch (err) {
+            console.error('Failed fetching person on popstate', err);
+            setState((prev) => ({ ...prev, error: 'Could not load person details.' }));
+          }
+        })();
+        setIsSettingsOpen(false);
+        setAuthModalOpen(false);
+        return;
+      }
+    };
+
+    window.addEventListener('popstate', onPop);
+
+    // If running in a WebView / Capacitor, handle Android back button (optional)
+    // Capacitor example (if Capacitor used): import { App as CapacitorApp } from '@capacitor/app'
+    // document.addEventListener('backbutton', () => { history.back(); }); // For Cordova
+    // For plain web, nothing else required.
+
+    return () => {
+      window.removeEventListener('popstate', onPop);
+    };
+  }, [pushAppState, tmdbKey]);
+
   // ---------- PERSIST LOCAL STATE ----------
   useEffect(() => {
     localStorage.setItem('favorites', JSON.stringify(state.favorites));
@@ -312,6 +452,9 @@ const App: React.FC = () => {
       error: null,
     }));
     setShowSuggestions(false);
+
+    // push to history
+    pushAppState({ type: 'home' });
   };
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -379,6 +522,13 @@ const App: React.FC = () => {
           selectedPerson: null,
           isLoading: false,
         }));
+        // push episode state into history
+        pushAppState({ 
+          type: 'episode', 
+          showId, 
+          season: (item as any).season_number, 
+          episode: (item as any).episode_number 
+        });
       } catch (err) {
         console.error(err);
         setState((prev) => ({
@@ -406,6 +556,12 @@ const App: React.FC = () => {
         isLoading: false,
         selectedPerson: null,
       }));
+      // push detail state into history
+      pushAppState({ 
+        type: 'detail', 
+        mediaType: item.media_type || details.media_type || 'movie', 
+        id: details.id 
+      });
     } catch (e) {
       setState((prev) => ({
         ...prev,
@@ -463,6 +619,13 @@ const App: React.FC = () => {
         selectedEpisode: episodeDetails,
         isLoading: false,
       }));
+      // push episode state into history
+      pushAppState({ 
+        type: 'episode', 
+        showId, 
+        season: seasonNumber, 
+        episode: episodeNumber 
+      });
     } catch (err) {
       console.error(err);
       setState((prev) => ({
@@ -486,6 +649,8 @@ const App: React.FC = () => {
         selectedPerson: person,
         isLoading: false,
       }));
+      // push person state into history
+      pushAppState({ type: 'person', id: personId });
     } catch (e) {
       setState((prev) => ({
         ...prev,
@@ -696,7 +861,10 @@ const App: React.FC = () => {
               </button>
             ) : (
               <button
-                onClick={() => setAuthModalOpen(true)}
+                onClick={() => {
+                  setAuthModalOpen(true);
+                  pushAppState({ type: 'auth', mode: 'signin' });
+                }}
                 className="flex items-center gap-2 px-3 py-2 text-xs md:text-sm rounded-xl bg-slate-900/60 border border-white/10 hover:border-cyan-400/60 hover:bg-cyan-500/10 transition"
               >
                 <LogIn size={16} />
@@ -705,7 +873,10 @@ const App: React.FC = () => {
             )}
 
             <button
-              onClick={() => setIsSettingsOpen(true)}
+              onClick={() => {
+                setIsSettingsOpen(true);
+                pushAppState({ type: 'settings' });
+              }}
               className="p-3 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition border border-transparent hover:border-white/5"
             >
               <Settings size={22} />
@@ -884,7 +1055,10 @@ const App: React.FC = () => {
             <span className="text-[10px] font-bold uppercase tracking-wide">Home</span>
           </button>
           <button
-            onClick={() => setState((prev) => ({ ...prev, view: 'library' }))}
+            onClick={() => {
+              setState((prev) => ({ ...prev, view: 'library' }));
+              pushAppState({ type: 'library' });
+            }}
             className={`flex flex-col items-center gap-1.5 transition-colors ${
               state.view === 'library' ? 'text-cyan-400' : 'text-slate-500'
             }`}
@@ -899,7 +1073,10 @@ const App: React.FC = () => {
       {state.selectedItem && (
         <DetailView
           item={state.selectedItem}
-          onClose={() => setState((prev) => ({ ...prev, selectedItem: null }))}
+          onClose={() => {
+            setState((prev) => ({ ...prev, selectedItem: null }));
+            history.back();
+          }}
           apiKey={tmdbKey}
           onToggleFavorite={toggleFavorite}
           onToggleWatchlist={toggleWatchlist}
@@ -918,7 +1095,10 @@ const App: React.FC = () => {
       {state.selectedPerson && (
         <PersonView
           person={state.selectedPerson}
-          onClose={() => setState((prev) => ({ ...prev, selectedPerson: null }))}
+          onClose={() => {
+            setState((prev) => ({ ...prev, selectedPerson: null }));
+            history.back();
+          }}
           onMediaClick={handleCardClick}
         />
       )}
@@ -927,7 +1107,10 @@ const App: React.FC = () => {
         <EpisodeDetailView
           episode={state.selectedEpisode}
           showTitle={(state.selectedEpisode as any).show_name}
-          onClose={() => setState((prev) => ({ ...prev, selectedEpisode: null }))}
+          onClose={() => {
+            setState((prev) => ({ ...prev, selectedEpisode: null }));
+            history.back();
+          }}
           onRate={rateItem}
           userRating={state.userRatings[String(state.selectedEpisode.id)]}
           ratingsCache={ratingsCache}
@@ -938,7 +1121,10 @@ const App: React.FC = () => {
 
       <SettingsModal
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={() => {
+          setIsSettingsOpen(false);
+          history.back();
+        }}
         currentKey={tmdbKey}
         currentGeminiKey={geminiKey}
         currentOpenAIKey={openaiKey}
@@ -954,7 +1140,13 @@ const App: React.FC = () => {
         }}
       />
 
-      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+      <AuthModal 
+        isOpen={authModalOpen} 
+        onClose={() => {
+          setAuthModalOpen(false);
+          history.back();
+        }} 
+      />
     </div>
   );
 };
