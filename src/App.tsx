@@ -347,24 +347,16 @@ const App: React.FC = () => {
       }
 
       if (s.type === 'detail') {
-        // try to navigate to detail view (we should re-fetch details if needed)
-        // If you already have details in memory, reuse them; else fetch.
-        // Simple approach: if selectedItem id matches requested, keep, otherwise fetch.
-        const cur = state.selectedItem;
-        if (cur && (cur as any).id === s.id) {
-          setState((prev) => ({ ...prev, view: 'trending', selectedItem: cur, selectedEpisode: null, selectedPerson: null }));
-        } else {
-          // fetch details and open
-          (async () => {
-            try {
-              const details = await tmdb.getDetails(tmdbKey, s.mediaType || 'movie', s.id);
-              setState((prev) => ({ ...prev, selectedItem: details, selectedEpisode: null, selectedPerson: null }));
-            } catch (err) {
-              console.error('Failed fetching details on popstate', err);
-              setState((prev) => ({ ...prev, error: 'Could not load details.' }));
-            }
-          })();
-        }
+        // fetch details and open
+        (async () => {
+          try {
+            const details = await tmdb.getDetails(tmdbKey, s.mediaType || 'movie', s.id);
+            setState((prev) => ({ ...prev, selectedItem: details, selectedEpisode: null, selectedPerson: null }));
+          } catch (err) {
+            console.error('Failed fetching details on popstate', err);
+            setState((prev) => ({ ...prev, error: 'Could not load details.' }));
+          }
+        })();
         setIsSettingsOpen(false);
         setAuthModalOpen(false);
         return;
@@ -438,7 +430,7 @@ const App: React.FC = () => {
     return () => {
       window.removeEventListener('popstate', onPop);
     };
-  }, [pushAppState, tmdbKey, state.selectedItem]);
+  }, [pushAppState, tmdbKey]);
 
   // ---------- PERSIST LOCAL STATE ----------
   useEffect(() => {
