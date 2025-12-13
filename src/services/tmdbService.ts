@@ -39,7 +39,7 @@ export const validateKey = async (
 
     // 1. Create a timeout controller (5 seconds)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     try {
       // 2. Pass the signal to fetch
