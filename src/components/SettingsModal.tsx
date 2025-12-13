@@ -44,12 +44,12 @@ const SmallToggle: React.FC<{
     aria-pressed={value}
     aria-label={ariaLabel}
     onClick={() => onChange(!value)}
-    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
-      value ? 'bg-amber-500' : 'bg-slate-700'
+    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 hover:scale-105 ${
+      value ? 'bg-gradient-to-r from-amber-500 to-amber-600 shadow-lg shadow-amber-500/20' : 'bg-slate-700 hover:bg-slate-600'
     }`}
   >
     <span
-      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-all duration-300 ${
         value ? 'translate-x-6' : 'translate-x-1'
       }`}
     />
@@ -125,9 +125,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     try {
       const isValid = await validateKey(trimmedTmdb);
 
-      if (isValid) {
+      // --- FIXED: Check isValid.ok instead of isValid (which is always truthy) ---
+      if (isValid.ok) {
         setStatus('valid');
-        // Let parent (App.tsx) update state + persist
+        
         onSave(
           trimmedTmdb,
           trimmedGemini,
@@ -140,13 +141,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           rankEpisodesByImdb
         );
 
-        // Close after a short success flash
         setTimeout(() => {
           setStatus('idle');
           onClose();
         }, 500);
       } else {
         setStatus('invalid');
+        // Optional: Log why it failed
+        console.log('Validation failed reason:', isValid.reason);
       }
     } catch (err) {
       console.error('Error validating TMDB key:', err);
@@ -155,12 +157,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-slate-900 border border-slate-700 w-full max-w-3xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+      <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 border border-slate-700 w-full max-w-3xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
         {/* Header */}
-        <div className="flex items-center gap-4 p-6 border-b border-slate-800">
+        <div className="flex items-center gap-4 p-6 border-b border-slate-800 bg-gradient-to-r from-cyan-950/20 to-blue-950/20">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-md bg-cyan-800/20">
+            <div className="p-2 rounded-md bg-gradient-to-br from-cyan-800/30 to-cyan-900/20 shadow-lg shadow-cyan-500/10">
               <Key size={28} className="text-cyan-300" />
             </div>
             <div>
@@ -186,7 +188,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                   value={keyInput}
                   onChange={(e) => { setKeyInput(e.target.value); setStatus('idle'); }}
                   placeholder="TMDB API Key (v3)"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-cyan-500 transition font-mono text-sm"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition-all duration-200 font-mono text-sm hover:border-slate-600"
                 />
                 <p className="text-xs text-slate-500 mt-2">
                   Get it from{' '}
@@ -203,14 +205,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                   value={geminiKeyInput}
                   onChange={(e) => setGeminiKeyInput(e.target.value)}
                   placeholder="Google Gemini API Key (optional)"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-purple-500 transition font-mono text-sm"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 font-mono text-sm hover:border-slate-600"
                 />
                 <input
                   type="text"
                   value={openaiKeyInput}
                   onChange={(e) => setOpenaiKeyInput(e.target.value)}
                   placeholder="OpenAI API Key (optional)"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-emerald-500 transition font-mono text-sm"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 transition-all duration-200 font-mono text-sm hover:border-slate-600"
                 />
               </div>
             </div>
@@ -224,7 +226,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                   value={omdbKeyInput}
                   onChange={(e) => setOmdbKeyInput(e.target.value)}
                   placeholder="OMDb API Key (optional)"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-amber-500 transition font-mono text-sm"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all duration-200 font-mono text-sm hover:border-slate-600"
                 />
                 <p className="text-xs text-slate-500">
                   Get an API key from{' '}
@@ -323,7 +325,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           <div className="flex items-center gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-slate-400 hover:text-white rounded-md transition"
+              className="px-4 py-2 text-slate-400 hover:text-white rounded-md transition-all duration-200 hover:bg-slate-800"
             >
               Cancel
             </button>
@@ -331,7 +333,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               onClick={handleSave}
               disabled={status === 'checking'}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold px-4 py-2 rounded-md shadow"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold px-4 py-2 rounded-md shadow-lg shadow-cyan-500/20 transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               {status === 'checking' ? 'Verifying…' : 'Save configuration'}
             </button>
