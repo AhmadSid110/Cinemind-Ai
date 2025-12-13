@@ -745,19 +745,19 @@ const App: React.FC = () => {
 
   // ---------- RENDER ----------
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-200 font-sans pb-24 selection:bg-cyan-500/30 selection:text-cyan-100">
+    <div className="min-h-screen bg-gradient-to-br from-[#020617] via-[#0f172a] to-[#020617] text-slate-200 font-sans pb-24 selection:bg-cyan-500/30 selection:text-cyan-100">
       {/* HEADER */}
-      <header className="sticky top-0 z-40 bg-[#020617]/80 backdrop-blur-xl border-b border-white/5">
+      <header className="sticky top-0 z-40 bg-gradient-to-r from-[#020617]/90 via-[#0f172a]/90 to-[#020617]/90 backdrop-blur-xl border-b border-white/5 shadow-lg shadow-black/20">
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-6">
           {/* Logo / Home */}
           <div
             className="flex items-center gap-3 cursor-pointer group"
             onClick={goToHome}
           >
-            <div className="bg-gradient-to-br from-cyan-500 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40 transition-all duration-300">
+            <div className="bg-gradient-to-br from-cyan-500 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-cyan-500/20 group-hover:shadow-cyan-500/40 group-hover:scale-110 transition-all duration-300">
               <Video className="text-white fill-white" size={20} />
             </div>
-            <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400 hidden md:block">
+            <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-cyan-200 to-slate-400 hidden md:block">
               CineMind
             </span>
           </div>
@@ -787,7 +787,7 @@ const App: React.FC = () => {
                   else setShowSuggestions(false);
                 }}
                 placeholder="Search titles or ask things like 'Top 20 sci-fi movies like Interstellar'"
-                className="w-full bg-slate-900/50 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-1 focus:ring-cyan-500/50 outline-none transition-all shadow-inner"
+                className="w-full bg-gradient-to-br from-slate-900/50 to-slate-800/30 border border-white/10 rounded-2xl py-3.5 pl-12 pr-4 text-slate-200 placeholder:text-slate-600 focus:border-cyan-500/50 focus:bg-slate-900 focus:ring-2 focus:ring-cyan-500/30 outline-none transition-all duration-300 shadow-inner hover:border-white/20"
               />
 
               {isSearching && (
@@ -851,13 +851,13 @@ const App: React.FC = () => {
             {user ? (
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-3 py-2 text-xs md:text-sm rounded-xl bg-slate-900/60 border border-white/10 hover:border-red-400/60 hover:bg-red-500/10 transition"
+                className="flex items-center gap-2 px-3 py-2 text-xs md:text-sm rounded-xl bg-slate-900/60 border border-white/10 hover:border-red-400/60 hover:bg-red-500/10 transition-all duration-300 hover:scale-105"
               >
                 {user.photoURL ? (
                   <img
                     src={user.photoURL}
                     alt={user.displayName || 'User'}
-                    className="w-6 h-6 rounded-full"
+                    className="w-6 h-6 rounded-full ring-2 ring-white/10"
                   />
                 ) : (
                   <UserCircle size={18} />
@@ -873,7 +873,7 @@ const App: React.FC = () => {
                   setAuthModalOpen(true);
                   pushAppState({ type: 'auth', mode: 'signin' });
                 }}
-                className="flex items-center gap-2 px-3 py-2 text-xs md:text-sm rounded-xl bg-slate-900/60 border border-white/10 hover:border-cyan-400/60 hover:bg-cyan-500/10 transition"
+                className="flex items-center gap-2 px-3 py-2 text-xs md:text-sm rounded-xl bg-gradient-to-r from-slate-900/60 to-slate-800/60 border border-white/10 hover:border-cyan-400/60 hover:bg-cyan-500/10 transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/20"
               >
                 <LogIn size={16} />
                 <span className="hidden md:inline">Sign in</span>
@@ -885,7 +885,7 @@ const App: React.FC = () => {
                 setIsSettingsOpen(true);
                 pushAppState({ type: 'settings' });
               }}
-              className="p-3 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition border border-transparent hover:border-white/5"
+              className="p-3 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all duration-300 border border-transparent hover:border-white/5 hover:scale-110 hover:rotate-90"
             >
               <Settings size={22} />
             </button>
@@ -895,9 +895,9 @@ const App: React.FC = () => {
 
       {/* MAIN CONTENT */}
       <main className="max-w-7xl mx-auto px-4 py-10">
-        {/* AI Explanation */}
-        {state.aiExplanation && !isSearching && (
-          <div className="mb-10 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 border border-cyan-500/20 p-5 rounded-2xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500">
+        {/* AI Explanation - Only show on search results, not on home feed */}
+        {state.aiExplanation && !isSearching && state.view === 'search' && (
+          <div className="mb-10 bg-gradient-to-r from-cyan-950/30 to-blue-950/30 border border-cyan-500/20 p-5 rounded-2xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-500 transition-all">
             <div className="p-2 bg-cyan-500/10 rounded-lg">
               <Sparkles className="text-cyan-400 shrink-0" size={20} />
             </div>
@@ -930,20 +930,20 @@ const App: React.FC = () => {
               <div className="bg-slate-900/50 p-1.5 rounded-xl flex gap-1 border border-white/5 backdrop-blur-md">
                 <button
                   onClick={() => setLibraryTab('favorites')}
-                  className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
+                  className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all duration-300 ${
                     libraryTab === 'favorites'
-                      ? 'bg-slate-800 text-white shadow-lg ring-1 ring-white/10'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      ? 'bg-gradient-to-r from-slate-800 to-slate-700 text-white shadow-lg ring-1 ring-white/10 scale-105'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5 hover:scale-105'
                   }`}
                 >
                   <Heart size={16} className={libraryTab === 'favorites' ? 'text-pink-500 fill-pink-500' : ''} /> Favorites
                 </button>
                 <button
                   onClick={() => setLibraryTab('watchlist')}
-                  className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${
+                  className={`px-6 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 transition-all duration-300 ${
                     libraryTab === 'watchlist'
-                      ? 'bg-slate-800 text-white shadow-lg ring-1 ring-white/10'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                      ? 'bg-gradient-to-r from-slate-800 to-slate-700 text-white shadow-lg ring-1 ring-white/10 scale-105'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5 hover:scale-105'
                   }`}
                 >
                   <List size={16} className={libraryTab === 'watchlist' ? 'text-emerald-500' : ''} /> Watchlist
@@ -961,10 +961,10 @@ const App: React.FC = () => {
                 <button
                   key={f.id}
                   onClick={() => setLibraryFilter(f.id as any)}
-                  className={`px-5 py-2.5 rounded-full text-sm font-bold border transition-all flex items-center gap-2 whitespace-nowrap transform hover:-translate-y-0.5 ${
+                  className={`px-5 py-2.5 rounded-full text-sm font-bold border transition-all duration-300 flex items-center gap-2 whitespace-nowrap transform hover:-translate-y-1 hover:scale-105 ${
                     libraryFilter === f.id
-                      ? 'bg-cyan-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/40'
-                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500 hover:bg-slate-800'
+                      ? 'bg-gradient-to-r from-cyan-600 to-blue-600 border-cyan-500 text-white shadow-lg shadow-cyan-900/40'
+                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-500 hover:bg-slate-800 hover:text-slate-200'
                   }`}
                 >
                   {f.icon && <f.icon size={16} />} {f.label}
@@ -1051,12 +1051,12 @@ const App: React.FC = () => {
       </main>
 
       {/* MOBILE NAV */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-[#020617]/90 backdrop-blur-xl border-t border-white/5 z-40 pb-safe">
+      <nav className="fixed bottom-0 left-0 right-0 bg-gradient-to-t from-[#020617] via-[#020617]/95 to-[#020617]/90 backdrop-blur-xl border-t border-white/5 z-40 pb-safe shadow-2xl shadow-black/40">
         <div className="flex justify-around p-4">
           <button
             onClick={goToHome}
-            className={`flex flex-col items-center gap-1.5 transition-colors ${
-              state.view === 'trending' ? 'text-cyan-400' : 'text-slate-500'
+            className={`flex flex-col items-center gap-1.5 transition-all duration-300 hover:scale-110 ${
+              state.view === 'trending' ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]' : 'text-slate-500 hover:text-slate-300'
             }`}
           >
             <Home size={24} strokeWidth={state.view === 'trending' ? 2.5 : 2} />
@@ -1067,8 +1067,8 @@ const App: React.FC = () => {
               setState((prev) => ({ ...prev, view: 'library' }));
               pushAppState({ type: 'library' });
             }}
-            className={`flex flex-col items-center gap-1.5 transition-colors ${
-              state.view === 'library' ? 'text-cyan-400' : 'text-slate-500'
+            className={`flex flex-col items-center gap-1.5 transition-all duration-300 hover:scale-110 ${
+              state.view === 'library' ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]' : 'text-slate-500 hover:text-slate-300'
             }`}
           >
             <Library size={24} strokeWidth={state.view === 'library' ? 2.5 : 2} />
