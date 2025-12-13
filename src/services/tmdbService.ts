@@ -28,14 +28,46 @@ const getUrl = (
 /**
  * Validate TMDB key, with detailed reason for failure.
  */
+// src/services/tmdbService.ts
+
 export const validateKey = async (
   apiKey: string
 ): Promise<{ ok: boolean; reason?: string }> => {
   try {
-    const trimmed = apiKey.trim(); // avoid trailing spaces issues
+    const trimmed = apiKey.trim();
     if (!trimmed) {
       return { ok: false, reason: 'empty-key' };
     }
+
+    // 1. Create a timeout controller (5 seconds)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      // 2. Pass the signal to fetch
+      const res = await fetch(getUrl('/configuration', trimmed), {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId); // Clear timeout if successful
+
+      if (res.ok) {
+        return { ok: true };
+      }
+
+      return { ok: false, reason: `HTTP ${res.status}` };
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      // 3. Handle timeout specifically
+      if (fetchError.name === 'AbortError') {
+        return { ok: false, reason: 'timeout' };
+      }
+      throw fetchError;
+    }
+  } catch (e: any) {
+    console.error('TMDB validateKey error:', e);
+    return { ok: false, reason: e?.message || 'network-error' };
+  }
+};
 
     const res = await fetch(getUrl('/configuration', trimmed));
 
