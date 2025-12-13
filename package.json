@@ -16,6 +16,8 @@
     "android:release": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease"
   },
   "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
     "@google/generative-ai": "^0.24.1",
     "firebase": "^12.6.0",
     "lucide-react": "^0.555.0",
@@ -25,6 +27,7 @@
     "recharts": "^3.5.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
