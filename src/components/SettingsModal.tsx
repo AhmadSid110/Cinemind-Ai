@@ -44,13 +44,17 @@ const SmallToggle: React.FC<{
     aria-pressed={value}
     aria-label={ariaLabel}
     onClick={() => onChange(!value)}
-    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 hover:scale-105 ${
-      value ? 'bg-gradient-to-r from-amber-500 to-amber-600 shadow-lg shadow-amber-500/20' : 'bg-slate-700 hover:bg-slate-600'
+    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 hover:scale-105 ${
+      value 
+        ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/30 focus:ring-emerald-500' 
+        : 'bg-gradient-to-r from-slate-700 to-slate-600 shadow-md shadow-slate-900/20 hover:from-slate-600 hover:to-slate-500 focus:ring-slate-500'
     }`}
   >
     <span
-      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-all duration-300 ${
-        value ? 'translate-x-6' : 'translate-x-1'
+      className={`inline-block h-5 w-5 transform rounded-full shadow-lg transition-all duration-300 ${
+        value 
+          ? 'translate-x-6 bg-white' 
+          : 'translate-x-1 bg-slate-300'
       }`}
     />
   </button>
@@ -95,6 +99,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [rankEpisodesByImdb, setRankEpisodesByImdb] = useState<boolean>(currentRankEpisodesByImdb);
 
   const [status, setStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
   // …and kept in sync if props change (e.g. when Firebase finishes loading)
   useEffect(() => { setKeyInput(currentKey || ''); }, [currentKey]);
@@ -117,10 +122,12 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
     if (!trimmedTmdb) {
       setStatus('invalid');
+      setErrorMsg('TMDB API Key is required');
       return;
     }
 
     setStatus('checking');
+    setErrorMsg(''); // Clear previous errors
 
     try {
       const isValid = await validateKey(trimmedTmdb);
@@ -147,12 +154,13 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         }, 500);
       } else {
         setStatus('invalid');
-        // Optional: Log why it failed
-        console.log('Validation failed reason:', isValid.reason);
+        // Set specific error message from validation result
+        setErrorMsg(isValid.reason || 'Unknown validation error');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error validating TMDB key:', err);
       setStatus('invalid');
+      setErrorMsg(err.message || 'Exception occurred');
     }
   };
 
@@ -311,7 +319,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
             {status === 'invalid' && (
               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-400/5 p-2 rounded">
                 <AlertTriangle size={14} />
-                <span>Invalid TMDB API Key</span>
+                <span>Error: {errorMsg || 'Invalid TMDB API Key'}</span>
               </div>
             )}
             {status === 'valid' && (
