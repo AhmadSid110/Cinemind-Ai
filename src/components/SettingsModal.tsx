@@ -99,7 +99,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [rankEpisodesByImdb, setRankEpisodesByImdb] = useState<boolean>(currentRankEpisodesByImdb);
 
   const [status, setStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
-  const [errorMsg, setErrorMsg] = useState<string>(''); // Add this
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
   // …and kept in sync if props change (e.g. when Firebase finishes loading)
   useEffect(() => { setKeyInput(currentKey || ''); }, [currentKey]);
@@ -154,7 +154,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
         }, 500);
       } else {
         setStatus('invalid');
-        // Capture the specific reason (e.g., "network-error" or "timeout")
+        // Set specific error message from validation result
         setErrorMsg(isValid.reason || 'Unknown validation error');
       }
     } catch (err: any) {
