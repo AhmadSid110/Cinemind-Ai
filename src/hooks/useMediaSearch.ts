@@ -5,12 +5,25 @@ import * as tmdb from '../services/tmdbService';
 import { analyzeQuery } from '../services/geminiService';
 import { analyzeQueryWithOpenAI } from '../services/openaiService';
 
+interface RatingsCache {
+  getCached: (mediaType: 'movie' | 'tv', tmdbId: number) => any;
+  getEpisodeCached: (showImdbId: string, season: number, episode: number) => { imdbRating?: string | null } | null;
+  refresh: (mediaType: 'movie' | 'tv', tmdbId: number, force?: boolean) => Promise<any>;
+  refreshEpisode: (showImdbId: string, season: number, episode: number, force?: boolean) => Promise<any>;
+  ensureForList: (items: Array<{ media_type: 'movie' | 'tv'; id: number }>, maxToEnqueue?: number) => void;
+  clearCache: () => void;
+  rawMap: Record<string, any>;
+  importMap: (m: Record<string, any>) => void;
+}
+
 interface UseMediaSearchProps {
   tmdbKey: string;
   geminiKey: string;
   openaiKey: string;
   trendingMovies: MediaItem[];
   trendingTv: MediaItem[];
+  rankEpisodesByImdb?: boolean;
+  ratingsCache?: RatingsCache;
 }
 
 /**
@@ -57,6 +70,8 @@ export function useMediaSearch({
   openaiKey,
   trendingMovies,
   trendingTv,
+  rankEpisodesByImdb = false,
+  ratingsCache,
 }: UseMediaSearchProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<MediaItem[]>([]);
@@ -178,6 +193,17 @@ export function useMediaSearch({
         const showId = await tmdb.findIdByName(tmdbKey, 'tv', title);
         if (!showId) throw new Error('Could not find that TV show.');
 
+        // Fetch show details to get IMDb ID (if using IMDb ranking)
+        let showImdbId: string | null = null;
+        if (rankEpisodesByImdb && ratingsCache) {
+          try {
+            const showDetails = await tmdb.getDetails(tmdbKey, 'tv', showId);
+            showImdbId = (showDetails as any)?.external_ids?.imdb_id ?? null;
+          } catch (err) {
+            console.warn('Failed to fetch show IMDb ID for episode ranking', err);
+          }
+        }
+
         const seasons = await tmdb.getShowSeasons(tmdbKey, showId);
 
         const fetchPromises = seasons
@@ -190,9 +216,36 @@ export function useMediaSearch({
         const seasonsEpisodes = await Promise.all(fetchPromises);
         const allEpisodes: Episode[] = seasonsEpisodes.flat();
 
-        const sorted = allEpisodes.sort(
-          (a, b) => b.vote_average - a.vote_average
-        );
+        // Sort episodes based on ranking preference
+        let sorted: Episode[];
+        if (rankEpisodesByImdb && ratingsCache && showImdbId) {
+          sorted = allEpisodes.sort((a, b) => {
+            const ra = ratingsCache.getEpisodeCached(showImdbId, a.season_number, a.episode_number)?.imdbRating;
+            const rb = ratingsCache.getEpisodeCached(showImdbId, b.season_number, b.episode_number)?.imdbRating;
+
+            // Safely parse ratings, checking for valid numbers
+            const ia = ra ? parseFloat(ra) : NaN;
+            const ib = rb ? parseFloat(rb) : NaN;
+
+            const validA = !isNaN(ia);
+            const validB = !isNaN(ib);
+
+            // If both IMDb exist and are valid → sort by IMDb
+            if (validA && validB) return ib - ia;
+
+            // If only one has valid IMDb → that one should be higher
+            if (validA && !validB) return -1;
+            if (!validA && validB) return 1;
+
+            // Fallback: sort by TMDB
+            return (b.vote_average ?? 0) - (a.vote_average ?? 0);
+          });
+        } else {
+          // Normal TMDB ranking
+          sorted = allEpisodes.sort(
+            (a, b) => (b.vote_average ?? 0) - (a.vote_average ?? 0)
+          );
+        }
 
         searchResults = sorted.slice(0, targetLimit).map((ep) => ({
           id: ep.id,
