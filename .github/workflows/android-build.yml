@@ -16,14 +16,14 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v4
 
-      # 2. Setup Node.js (v22 is required for Capacitor 6+)
+      # 2. Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
 
-      # 3. Setup Java 21 (Required for Android Gradle Plugin 8+)
+      # 3. Setup Java 21
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -38,58 +38,13 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      # 6. Build Web Assets (React/Vite)
-      - name: Build Web Assets
-        run: npm run build
-
-      # 7. Sync Capacitor (This updates your native Android folder with the web build)
-      - name: Sync Capacitor
-        run: npx cap sync android
-
-      # 8. Build APK with Gradle
-      - name: Build Debug APK
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
-
-      # 9. Upload Artifact
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Cinemind-Debug-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk      # 5. Install Dependencies
-      - name: Install Dependencies
-        run: npm ci
-
       # 6. Build Web Assets
       - name: Build Web Assets
         run: npm run build
 
-      # 7. Sync Capacitor & Inject Permissions
-      - name: Sync Capacitor and Add Permissions
-        run: |
-          # Initialize Android platform if missing
-          if [ ! -d "android" ]; then
-            npx cap add android
-          fi
-          
-          # Sync web assets
-          npx cap sync android
-
-          # --- AUTOMATION: INJECT PERMISSIONS ---
-          MANIFEST="android/app/src/main/AndroidManifest.xml"
-          
-          # Check if permissions exist, if not, inject them before the <application> tag
-          if ! grep -q "android.permission.INTERNET" "$MANIFEST"; then
-            echo "Injecting Internet Permissions into AndroidManifest.xml..."
-            sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>\n    <application/' "$MANIFEST"
-          else
-            echo "Permissions already exist in Manifest."
-          fi
-          
-          # Print the file to verify (optional, for debugging logs)
-          cat "$MANIFEST" | head -n 15
+      # 7. Sync Capacitor
+      - name: Sync Capacitor
+        run: npx cap sync android
 
       # 8. Build APK with Gradle
       - name: Build Debug APK
