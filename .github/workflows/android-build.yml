@@ -1,11 +1,9 @@
 name: Build Android APK
 
 on:
-  # Trigger on push to main branch
   push:
     branches:
       - main
-  # Allow manual trigger from Actions tab
   workflow_dispatch:
 
 jobs:
@@ -14,18 +12,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout the code
+      # 1. Checkout Source
       - name: Checkout Source
         uses: actions/checkout@v4
 
-      # 2. Setup Node.js (for React/Vite)
+      # 2. Setup Node.js (Using v22 as required by Capacitor)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
 
-      # 3. Setup Java 17 (Required for Android Gradle)
+      # 3. Setup Java 21 (Required for newer Android Gradle builds)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -36,34 +34,49 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 5. Install NPM Dependencies
+      # 5. Install Dependencies
       - name: Install Dependencies
         run: npm ci
 
-      # 6. Build the Web App (Vite Build)
+      # 6. Build Web Assets
       - name: Build Web Assets
         run: npm run build
 
-      # 7. Sync Web Assets to Android
-      # Note: We run 'npx cap add android' just in case the android folder isn't in git,
-      # though usually it should be committed.
-      - name: Sync Capacitor
+      # 7. Sync Capacitor & Inject Permissions
+      - name: Sync Capacitor and Add Permissions
         run: |
+          # Initialize Android platform if missing
           if [ ! -d "android" ]; then
             npx cap add android
           fi
+          
+          # Sync web assets
           npx cap sync android
 
-      # 8. Build the APK using Gradle
+          # --- AUTOMATION: INJECT PERMISSIONS ---
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          
+          # Check if permissions exist, if not, inject them before the <application> tag
+          if ! grep -q "android.permission.INTERNET" "$MANIFEST"; then
+            echo "Injecting Internet Permissions into AndroidManifest.xml..."
+            sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET" \/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" \/>\n    <application/' "$MANIFEST"
+          else
+            echo "Permissions already exist in Manifest."
+          fi
+          
+          # Print the file to verify (optional, for debugging logs)
+          cat "$MANIFEST" | head -n 15
+
+      # 8. Build APK with Gradle
       - name: Build Debug APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      # 9. Upload the APK so you can download it
+      # 9. Upload Artifact
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CineMind-Debug-APK
+          name: Cinemind-Debug-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
