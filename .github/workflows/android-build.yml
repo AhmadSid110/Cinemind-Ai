@@ -16,14 +16,14 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v4
 
-      # 2. Setup Node.js (Using v22 as required by Capacitor)
+      # 2. Setup Node.js (v22 is required for Capacitor 6+)
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
 
-      # 3. Setup Java 21 (Required for newer Android Gradle builds)
+      # 3. Setup Java 21 (Required for Android Gradle Plugin 8+)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -35,6 +35,30 @@ jobs:
         uses: android-actions/setup-android@v3
 
       # 5. Install Dependencies
+      - name: Install Dependencies
+        run: npm ci
+
+      # 6. Build Web Assets (React/Vite)
+      - name: Build Web Assets
+        run: npm run build
+
+      # 7. Sync Capacitor (This updates your native Android folder with the web build)
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      # 8. Build APK with Gradle
+      - name: Build Debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      # 9. Upload Artifact
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cinemind-Debug-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk      # 5. Install Dependencies
       - name: Install Dependencies
         run: npm ci
 
