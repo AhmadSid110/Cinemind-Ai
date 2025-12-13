@@ -19,9 +19,6 @@
       "launchShowDuration": 2000,
       "backgroundColor": "#020617",
       "showSpinner": false
-    },
-    "CapacitorHttp": {
-      "enabled": true
     }
   }
 }
