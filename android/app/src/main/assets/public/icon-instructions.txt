@@ -1,0 +1,51 @@
+# App Icon Instructions
+
+To complete the APK setup, you need to add app icons.
+
+## Required Icons:
+
+1. icon-192.png - 192x192 pixels
+2. icon-512.png - 512x512 pixels
+
+## How to Create Icons:
+
+### Option 1: Use an Online Tool
+- Visit: https://icon.kitchen/
+- Upload your logo/image
+- Select "iOS, Android, Web App"
+- Download and extract the generated icons
+- Copy icon-192.png and icon-512.png to this folder
+
+### Option 2: Design Your Own
+- Create a square image (512x512 recommended)
+- Use your favorite design tool (Figma, Canva, Photoshop, etc.)
+- Export as PNG with transparent background
+- Resize to create both 192x192 and 512x512 versions
+
+### Option 3: Use Placeholder
+- Create simple colored squares as placeholders:
+  - 192x192: for mobile home screen
+  - 512x512: for app stores and high-res displays
+
+## Icon Design Tips:
+
+1. Use simple, recognizable design
+2. High contrast colors work best
+3. Avoid text (it becomes unreadable at small sizes)
+4. Use your brand colors
+5. Test on both light and dark backgrounds
+6. Leave some padding (safe area) around edges
+
+## For This App (CineRank AI):
+
+Suggested icon ideas:
+- Movie camera or film reel icon
+- Play button with AI/sparkle elements
+- Combination of cinema and technology symbols
+- Use the app's theme colors: cyan (#06b6d4) and blue (#3b82f6)
+
+After adding icons, they will be automatically:
+- Used for PWA installation
+- Included in the Android APK
+- Shown on home screen after installation
+

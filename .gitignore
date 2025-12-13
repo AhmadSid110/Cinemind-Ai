@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 # Android / Capacitor
-android/
+# android/
 ios/
 .capacitor/
 *.apk

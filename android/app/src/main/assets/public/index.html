@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+
+    <!-- Viewport / Mobile -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"
+    />
+
+    <!-- PWA / Theme -->
+    <meta name="theme-color" content="#06b6d4" />
+    <meta
+      name="description"
+      content="AI-powered movie and TV show discovery app with intelligent recommendations"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CineMind AI" />
+
+    <title>CineMind AI</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+
+    <!-- ✅ Tailwind CDN (acceptable for your setup) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+      /* Background */
+      body {
+        background-color: #030712;
+        background-image:
+          linear-gradient(rgba(6, 182, 212, 0.05) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(6, 182, 212, 0.05) 1px, transparent 1px);
+        background-size: 50px 50px;
+        background-attachment: fixed;
+        color: #e2e8f0;
+      }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #020617;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #06b6d4, #3b82f6);
+        border-radius: 3px;
+      }
+
+      /* Font smoothing */
+      html {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Safe area */
+      body {
+        padding: env(safe-area-inset-top)
+                 env(safe-area-inset-right)
+                 env(safe-area-inset-bottom)
+                 env(safe-area-inset-left);
+      }
+
+      /* Hide scrollbar utility */
+      .scrollbar-hide {
+        scrollbar-width: none;
+      }
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+      }
+
+      /* Landscape tweaks */
+      @media screen and (orientation: landscape) and (max-height: 600px) {
+        .landscape-compact-header {
+          height: 60px !important;
+        }
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-mPo5Wmqf.js"></script>
+  <link rel="manifest" href="/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/registerSW.js"></script></head>
+
+  <body>
+    <div id="root"></div>
+
+    <!-- ✅ Vite entry -->
+
+    <!-- ✅ Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker
+            .register('/sw.js')
+            .then(reg => console.log('SW registered:', reg))
+            .catch(err => console.error('SW registration failed:', err));
+        });
+      }
+    </script>
+  </body>
+</html>
