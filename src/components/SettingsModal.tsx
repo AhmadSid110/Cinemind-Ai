@@ -13,10 +13,11 @@ interface SettingsModalProps {
   currentShowEpisodeImdbOnCards: boolean;
   currentShowEpisodeImdbOnSeasonList: boolean;
   currentCloudSync?: boolean;
+  currentRankEpisodesByImdb: boolean;
 
   /**
    * onSave's signature extended:
-   * onSave(tmdbKey, geminiKey, openaiKey, omdbKey, useOmdbRatings, showEpisodeImdbOnCards, showEpisodeImdbOnSeasonList, enableCloudSync)
+   * onSave(tmdbKey, geminiKey, openaiKey, omdbKey, useOmdbRatings, showEpisodeImdbOnCards, showEpisodeImdbOnSeasonList, enableCloudSync, rankEpisodesByImdb)
    */
   onSave: (
     tmdbKey: string,
@@ -26,7 +27,8 @@ interface SettingsModalProps {
     useOmdbRatings: boolean,
     showEpisodeImdbOnCards: boolean,
     showEpisodeImdbOnSeasonList: boolean,
-    enableCloudSync: boolean
+    enableCloudSync: boolean,
+    rankEpisodesByImdb: boolean
   ) => void;
   onClose: () => void;
   isOpen: boolean;
@@ -75,6 +77,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   currentShowEpisodeImdbOnCards,
   currentShowEpisodeImdbOnSeasonList,
   currentCloudSync,
+  currentRankEpisodesByImdb,
   onSave,
   onClose,
   isOpen,
@@ -89,6 +92,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   const [showEpisodeImdbOnCards, setShowEpisodeImdbOnCards] = useState<boolean>(currentShowEpisodeImdbOnCards);
   const [showEpisodeImdbOnSeasonList, setShowEpisodeImdbOnSeasonList] = useState<boolean>(currentShowEpisodeImdbOnSeasonList);
   const [enableCloudSync, setEnableCloudSync] = useState<boolean>(!!currentCloudSync);
+  const [rankEpisodesByImdb, setRankEpisodesByImdb] = useState<boolean>(currentRankEpisodesByImdb);
 
   const [status, setStatus] = useState<'idle' | 'checking' | 'valid' | 'invalid'>('idle');
 
@@ -101,6 +105,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => { setShowEpisodeImdbOnCards(currentShowEpisodeImdbOnCards); }, [currentShowEpisodeImdbOnCards]);
   useEffect(() => { setShowEpisodeImdbOnSeasonList(currentShowEpisodeImdbOnSeasonList); }, [currentShowEpisodeImdbOnSeasonList]);
   useEffect(() => { setEnableCloudSync(!!currentCloudSync); }, [currentCloudSync]);
+  useEffect(() => { setRankEpisodesByImdb(currentRankEpisodesByImdb); }, [currentRankEpisodesByImdb]);
 
   if (!isOpen) return null;
 
@@ -131,7 +136,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           useOmdbToggle,
           showEpisodeImdbOnCards,
           showEpisodeImdbOnSeasonList,
-          enableCloudSync
+          enableCloudSync,
+          rankEpisodesByImdb
         );
 
         // Close after a short success flash
@@ -254,6 +260,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
                       <div className="text-xs text-slate-500">Replace TMDB episode rating with episode IMDb in the season episode list (Details page)</div>
                     </div>
                     <SmallToggle value={showEpisodeImdbOnSeasonList} onChange={setShowEpisodeImdbOnSeasonList} ariaLabel="Show episode imdb in season list" />
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+                    <div>
+                      <div className="text-sm font-medium text-slate-200">Rank episodes by IMDb rating</div>
+                      <div className="text-xs text-slate-500">When searching "top episodes", sort using IMDb rating instead of TMDB (if available)</div>
+                    </div>
+                    <SmallToggle value={rankEpisodesByImdb} onChange={setRankEpisodesByImdb} ariaLabel="Rank episodes by IMDb rating" />
                   </div>
                 </div>
               </div>

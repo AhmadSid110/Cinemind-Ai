@@ -125,6 +125,12 @@ const App: React.FC = () => {
     return v === 'true';
   });
 
+  // ---------- RANK EPISODES BY IMDB STATE ----------
+  const [rankEpisodesByImdb, setRankEpisodesByImdb] = useState<boolean>(() => {
+    const v = localStorage.getItem('rankEpisodesByImdb');
+    return v === 'true';
+  });
+
   // ---------- HOME FEED ----------
   const {
     trendingMovies,
@@ -185,6 +191,8 @@ const App: React.FC = () => {
     openaiKey,
     trendingMovies,
     trendingTv,
+    rankEpisodesByImdb,
+    ratingsCache,
   });
 
   // Fetch OMDb ratings for search results (if enabled)
@@ -1133,10 +1141,13 @@ const App: React.FC = () => {
         currentShowEpisodeImdbOnCards={!!showEpisodeImdbOnCards}
         currentShowEpisodeImdbOnSeasonList={!!showEpisodeImdbOnSeasonList}
         currentCloudSync={enableCloudSync}
-        onSave={async (key, geminiKey, openaiKey, omdbKey, useOmdb, showOnCards, showInSeason, enableCloud) => {
+        currentRankEpisodesByImdb={rankEpisodesByImdb}
+        onSave={async (key, geminiKey, openaiKey, omdbKey, useOmdb, showOnCards, showInSeason, enableCloud, rankImdb) => {
           saveKeys(key, geminiKey, openaiKey, omdbKey, useOmdb, showOnCards, showInSeason);
           setEnableCloudSync(!!enableCloud);
           localStorage.setItem('enableCloudSync', !!enableCloud ? 'true' : 'false');
+          setRankEpisodesByImdb(!!rankImdb);
+          localStorage.setItem('rankEpisodesByImdb', !!rankImdb ? 'true' : 'false');
         }}
       />
 
