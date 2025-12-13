@@ -125,9 +125,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
     try {
       const isValid = await validateKey(trimmedTmdb);
 
-      if (isValid) {
+      // --- FIXED: Check isValid.ok instead of isValid (which is always truthy) ---
+      if (isValid.ok) {
         setStatus('valid');
-        // Let parent (App.tsx) update state + persist
+        
         onSave(
           trimmedTmdb,
           trimmedGemini,
@@ -140,13 +141,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
           rankEpisodesByImdb
         );
 
-        // Close after a short success flash
         setTimeout(() => {
           setStatus('idle');
           onClose();
         }, 500);
       } else {
         setStatus('invalid');
+        // Optional: Log why it failed
+        console.log('Validation failed reason:', isValid.reason);
       }
     } catch (err) {
       console.error('Error validating TMDB key:', err);
