@@ -5,6 +5,17 @@ import * as tmdb from '../services/tmdbService';
 import { analyzeQuery } from '../services/geminiService';
 import { analyzeQueryWithOpenAI } from '../services/openaiService';
 
+interface RatingsCache {
+  getCached: (mediaType: 'movie' | 'tv', tmdbId: number) => any;
+  getEpisodeCached: (showImdbId: string, season: number, episode: number) => { imdbRating?: string | null } | null;
+  refresh: (mediaType: 'movie' | 'tv', tmdbId: number, force?: boolean) => Promise<any>;
+  refreshEpisode: (showImdbId: string, season: number, episode: number, force?: boolean) => Promise<any>;
+  ensureForList: (items: Array<{ media_type: 'movie' | 'tv'; id: number }>, maxToEnqueue?: number) => void;
+  clearCache: () => void;
+  rawMap: Record<string, any>;
+  importMap: (m: Record<string, any>) => void;
+}
+
 interface UseMediaSearchProps {
   tmdbKey: string;
   geminiKey: string;
@@ -12,7 +23,7 @@ interface UseMediaSearchProps {
   trendingMovies: MediaItem[];
   trendingTv: MediaItem[];
   rankEpisodesByImdb?: boolean;
-  ratingsCache?: any;
+  ratingsCache?: RatingsCache;
 }
 
 /**
@@ -212,15 +223,19 @@ export function useMediaSearch({
             const ra = ratingsCache.getEpisodeCached(showImdbId, a.season_number, a.episode_number)?.imdbRating;
             const rb = ratingsCache.getEpisodeCached(showImdbId, b.season_number, b.episode_number)?.imdbRating;
 
-            const ia = ra ? parseFloat(ra) : null;
-            const ib = rb ? parseFloat(rb) : null;
+            // Safely parse ratings, checking for valid numbers
+            const ia = ra ? parseFloat(ra) : NaN;
+            const ib = rb ? parseFloat(rb) : NaN;
 
-            // If both IMDb exist → sort by IMDb
-            if (ia !== null && ib !== null) return ib - ia;
+            const validA = !isNaN(ia);
+            const validB = !isNaN(ib);
 
-            // If only IMDb exists for one → that one should be higher
-            if (ia !== null && ib === null) return -1;
-            if (ia === null && ib !== null) return 1;
+            // If both IMDb exist and are valid → sort by IMDb
+            if (validA && validB) return ib - ia;
+
+            // If only one has valid IMDb → that one should be higher
+            if (validA && !validB) return -1;
+            if (!validA && validB) return 1;
 
             // Fallback: sort by TMDB
             return (b.vote_average ?? 0) - (a.vote_average ?? 0);
