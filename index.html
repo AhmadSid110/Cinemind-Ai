@@ -33,6 +33,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
+      /* Dynamic viewport height for landscape/mobile compatibility */
+      :root {
+        --vh: 1vh;
+      }
+
       /* Background */
       body {
         background-color: #030712;
@@ -63,14 +68,19 @@
         -moz-osx-font-smoothing: grayscale;
       }
 
-      /* Full height for PWA */
+      /* Full height for PWA - using dynamic vh for landscape compatibility */
       html,
       body,
       #root {
-        height: 100%;
+        min-height: calc(var(--vh) * 100);
         margin: 0;
         padding: 0;
         overscroll-behavior: none;
+      }
+
+      /* Allow body to scroll for landscape compatibility */
+      body {
+        overflow-y: auto;
       }
 
       /* Android gesture smoothness */
@@ -95,6 +105,12 @@
       @media screen and (orientation: landscape) and (max-height: 600px) {
         .landscape-compact-header {
           height: 60px !important;
+        }
+        
+        /* Reset margins in landscape for better compatibility */
+        .hero-container {
+          margin-top: 0 !important;
+          padding-top: 8px !important;
         }
       }
     </style>

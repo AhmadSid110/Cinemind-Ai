@@ -229,7 +229,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-2">
-      <div className="relative max-w-3xl w-full max-h-[90vh] overflow-hidden rounded-3xl bg-slate-950 border border-slate-800 shadow-2xl">
+      <div className="relative max-w-3xl w-full max-h-[calc(var(--vh)*90)] overflow-hidden rounded-3xl bg-slate-950 border border-slate-800 shadow-2xl">
         {/* Close */}
         <button
           onClick={onClose}
