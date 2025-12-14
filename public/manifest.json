@@ -10,7 +10,7 @@
   "display": "standalone",
   "display_override": ["fullscreen"],
 
-  "orientation": "portrait",
+  "orientation": "any",
 
   "background_color": "#020617",
   "theme_color": "#020617",
