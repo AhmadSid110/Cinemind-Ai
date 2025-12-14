@@ -67,6 +67,34 @@ const App: React.FC = () => {
     userRatings: JSON.parse(localStorage.getItem('userRatings') || '{}'),
   });
 
+  // ---------- DYNAMIC VIEWPORT HEIGHT (for landscape/mobile compatibility) ----------
+  useEffect(() => {
+    const setVH = () => {
+      document.documentElement.style.setProperty(
+        '--vh',
+        `${window.innerHeight * 0.01}px`
+      );
+    };
+
+    setVH();
+    
+    // Use resize event for all browsers (handles both resize and orientation changes)
+    window.addEventListener('resize', setVH);
+    
+    // Also listen to orientationchange as a supplementary handler
+    // This ensures immediate updates on orientation changes on mobile devices
+    if ('onorientationchange' in window) {
+      window.addEventListener('orientationchange', setVH);
+    }
+
+    return () => {
+      window.removeEventListener('resize', setVH);
+      if ('onorientationchange' in window) {
+        window.removeEventListener('orientationchange', setVH);
+      }
+    };
+  }, []);
+
   // ---------- SEARCH SUGGESTIONS UI ----------
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -745,7 +773,7 @@ const App: React.FC = () => {
 
   // ---------- RENDER ----------
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#020617] via-[#0f172a] to-[#020617] text-slate-200 font-sans pb-24 selection:bg-cyan-500/30 selection:text-cyan-100">
+    <div className="min-h-[calc(var(--vh)*100)] bg-gradient-to-br from-[#020617] via-[#0f172a] to-[#020617] text-slate-200 font-sans pb-24 selection:bg-cyan-500/30 selection:text-cyan-100">
       {/* HEADER */}
       <header className="sticky top-0 z-40 bg-gradient-to-r from-[#020617]/90 via-[#0f172a]/90 to-[#020617]/90 backdrop-blur-xl border-b border-white/5 shadow-lg shadow-black/20">
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-6">

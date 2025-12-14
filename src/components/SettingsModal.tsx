@@ -166,7 +166,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 border border-slate-700 w-full max-w-3xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+      <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800 border border-slate-700 w-full max-w-3xl rounded-2xl shadow-2xl flex flex-col max-h-[calc(var(--vh)*90)] overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
         {/* Header */}
         <div className="flex items-center gap-4 p-6 border-b border-slate-800 bg-gradient-to-r from-cyan-950/20 to-blue-950/20">
           <div className="flex items-center gap-3">

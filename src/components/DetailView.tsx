@@ -216,7 +216,7 @@ const DetailView: React.FC<DetailViewProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-[#030712] text-slate-200 animate-in fade-in zoom-in-95 duration-300 scrollbar-thin scrollbar-thumb-cyan-900 scrollbar-track-transparent selection:bg-cyan-500/30">
       {/* HERO */}
-      <div className="relative h-[62vh] w-full group overflow-hidden">
+      <div className="relative h-[calc(var(--vh)*62)] w-full group overflow-hidden">
         <div className="absolute inset-0">
           <img
             src={backdropUrl}
@@ -602,6 +602,50 @@ const DetailView: React.FC<DetailViewProps> = ({
                   </div>
                 </section>
               )}
+
+            {/* IMDb Reviews - Button to view on IMDb */}
+            {imdbId && (
+              <section className="mt-4 space-y-3">
+                <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
+                  <span className="w-1 h-6 bg-[#f5c518] rounded-full" />
+                  IMDb Reviews
+                </h3>
+                <div className="p-4 rounded-lg bg-[#0f172a] border border-white/5">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0">
+                      <Star className="text-[#f5c518]" size={24} />
+                    </div>
+                    <div className="flex-1 space-y-3">
+                      {cachedRating?.imdbRating && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl font-bold text-slate-100">
+                            {cachedRating.imdbRating}
+                          </span>
+                          <span className="text-sm text-slate-400">/10</span>
+                          {cachedRating.imdbVotes && (
+                            <span className="text-xs text-slate-500 ml-2">
+                              ({cachedRating.imdbVotes} votes)
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <p className="text-sm text-slate-400">
+                        Read detailed reviews and ratings from the IMDb community
+                      </p>
+                      <a
+                        href={`https://www.imdb.com/title/${imdbId}/reviews`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#f5c518] text-black font-semibold text-sm hover:bg-[#e2b616] transition-all duration-300 shadow-lg hover:shadow-[#f5c518]/20"
+                      >
+                        <ExternalLink size={16} />
+                        View All IMDb Reviews
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            )}
           </div>
 
           {/* RIGHT: seasons / episodes chart */}
