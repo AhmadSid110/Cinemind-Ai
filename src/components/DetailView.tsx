@@ -635,7 +635,7 @@ const DetailView: React.FC<DetailViewProps> = ({
                       <a
                         href={`https://www.imdb.com/title/${imdbId}/reviews`}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#f5c518] text-black font-semibold text-sm hover:bg-[#e2b616] transition-all duration-300 shadow-lg hover:shadow-[#f5c518]/20"
                       >
                         <ExternalLink size={16} />

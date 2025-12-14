@@ -81,8 +81,8 @@ const App: React.FC = () => {
     // Use resize event for all browsers (handles both resize and orientation changes)
     window.addEventListener('resize', setVH);
     
-    // Also listen to orientationchange for older browsers (fallback)
-    // Note: orientationchange is deprecated but kept for backward compatibility
+    // Also listen to orientationchange as a supplementary handler
+    // This ensures immediate updates on orientation changes on mobile devices
     if ('onorientationchange' in window) {
       window.addEventListener('orientationchange', setVH);
     }
