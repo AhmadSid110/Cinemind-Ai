@@ -15,8 +15,7 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        // We already have manifest.json in public/, so we don't need to redefine it here.
-        // This just controls what gets cached and how.
+        manifest: false, // Use manifest.json from public/ folder
         workbox: {
           // Precache all built assets + manifest/icons
           globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,json}'],

@@ -241,10 +241,10 @@ const DetailView: React.FC<DetailViewProps> = ({
         </button>
 
         {/* HERO CONTENT */}
-        <div className="absolute bottom-0 left-0 w-full p-6 md:p-10 z-20 pt-24">
+        <div className="absolute bottom-6 md:bottom-8 left-4 right-4 z-20">
           <div className="max-w-5xl">
             {/* badges */}
-            <div className="flex flex-wrap items-center gap-2 mb-3">
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
               {item.status && (
                 <span className="bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-md text-xs font-bold border border-cyan-500/30">
                   {item.status}
@@ -266,11 +266,11 @@ const DetailView: React.FC<DetailViewProps> = ({
               ))}
             </div>
 
-            <h1 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-slate-200 to-slate-500 mb-4 drop-shadow-2xl leading-tight">
+            <h1 className="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white via-slate-200 to-slate-500 mb-2 drop-shadow-2xl leading-tight mt-1">
               {title}
             </h1>
 
-            <div className="flex flex-wrap items-center gap-4 text-slate-400 text-sm font-medium mb-6">
+            <div className="flex flex-wrap items-center gap-4 text-slate-400 text-sm font-medium mb-3">
               {year && (
                 <span className="flex items-center gap-2 text-sm">
                   <Calendar size={14} className="text-cyan-500" />
@@ -294,7 +294,7 @@ const DetailView: React.FC<DetailViewProps> = ({
 
             {/* Ratings row (smaller badges) */}
             {(cachedRating?.imdbRating || cachedRating?.metascore || cachedRating?.rottenTomatoes || item.vote_average) && (
-              <div className="flex flex-wrap items-center gap-2 mb-4">
+              <div className="flex flex-wrap items-center gap-1.5 mb-2">
                 {cachedRating?.imdbRating && (
                   <div
                     className={`${badgeBase} bg-amber-500/10 border border-amber-500/30 text-amber-300`}

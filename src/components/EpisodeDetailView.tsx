@@ -249,14 +249,14 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
 
-            <div className="absolute bottom-4 left-4 right-4 space-y-2">
+            <div className="absolute bottom-6 left-4 right-4 space-y-1">
               {showTitle && (
                 <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-black/50 text-xs text-slate-200">
                   <Tv size={14} />
                   <span className="font-semibold">{showTitle}</span>
                 </div>
               )}
-              <h2 className="text-xl md:text-2xl font-bold text-white">
+              <h2 className="text-xl md:text-2xl font-bold text-white leading-tight mt-1">
                 S{episode.season_number} · E{episode.episode_number} &mdash; {episode.name}
               </h2>
               <div className="flex items-center gap-3 text-xs text-slate-300">
