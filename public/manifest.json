@@ -1,18 +1,19 @@
 {
   "id": "/",
-  "name": "CineRank AI - Movie & TV Discovery",
-  "short_name": "CineRank AI",
+  "name": "CineMind",
+  "short_name": "CineMind",
   "description": "AI-powered movie and TV show discovery app with intelligent recommendations",
 
   "start_url": "/",
   "scope": "/",
 
   "display": "standalone",
+  "display_override": ["fullscreen"],
 
-  "orientation": "any",
+  "orientation": "portrait",
 
   "background_color": "#020617",
-  "theme_color": "#06b6d4",
+  "theme_color": "#020617",
 
   "categories": ["entertainment", "lifestyle"],
 

@@ -10,7 +10,7 @@
     />
 
     <!-- PWA / Theme -->
-    <meta name="theme-color" content="#06b6d4" />
+    <meta name="theme-color" content="#020617" />
     <meta
       name="description"
       content="AI-powered movie and TV show discovery app with intelligent recommendations"
@@ -18,6 +18,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="CineMind AI" />
+    <meta name="mobile-web-app-capable" content="yes" />
 
     <title>CineMind AI</title>
 
@@ -62,12 +63,24 @@
         -moz-osx-font-smoothing: grayscale;
       }
 
-      /* Safe area */
+      /* Full height for PWA */
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overscroll-behavior: none;
+      }
+
+      /* Android gesture smoothness */
       body {
-        padding: env(safe-area-inset-top)
-                 env(safe-area-inset-right)
-                 env(safe-area-inset-bottom)
-                 env(safe-area-inset-left);
+        touch-action: manipulation;
+      }
+
+      /* Safe area padding - scoped to headers only */
+      .header-safe {
+        padding-top: env(safe-area-inset-top);
       }
 
       /* Hide scrollbar utility */
