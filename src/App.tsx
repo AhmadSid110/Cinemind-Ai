@@ -1,5 +1,6 @@
 // src/App.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home,
   Library,
@@ -27,6 +28,9 @@ import EpisodeDetailView from './components/EpisodeDetailView';
 import SettingsModal from './components/SettingsModal';
 import HorizontalCarousel from './components/HorizontalCarousel';
 import AuthModal from './components/AuthModal';
+import SplashScreen from './components/SplashScreen';
+import AnimatedBackground from './components/AnimatedBackground';
+import SkeletonCard from './components/SkeletonCard';
 
 // Hooks
 import { useAuth } from './hooks/useAuth';
@@ -39,6 +43,18 @@ import { useRatingsCache } from './hooks/useRatingsCache';
 import { useCloudCacheSync } from './hooks/useCloudCacheSync';
 
 const App: React.FC = () => {
+  // ---------- SPLASH SCREEN STATE ----------
+  const [showSplash, setShowSplash] = useState<boolean>(() => {
+    // Only show splash on first load (cold start)
+    const hasShownSplash = sessionStorage.getItem('hasShownSplash');
+    return !hasShownSplash;
+  });
+
+  const handleSplashComplete = useCallback(() => {
+    setShowSplash(false);
+    sessionStorage.setItem('hasShownSplash', 'true');
+  }, []);
+
   // ---------- AUTH / KEYS ----------
   const { user, login, logout } = useAuth();
   const {
@@ -727,39 +743,44 @@ const App: React.FC = () => {
 
   // ---------- HELPERS ----------
   const renderGrid = (items: MediaItem[], showRank: boolean = false) => (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-      {items.map((originalItem, idx) => {
-        // clone and augment episodes with show_imdb_id from local map if available
-        const isEpisode = !!(originalItem as any).episode_number;
-        let item = originalItem;
-        if (isEpisode) {
-          const showId = (originalItem as any).show_id ?? (originalItem as any).tv_id ?? null;
-          const existingShowImdb = (originalItem as any).show_imdb_id ?? null;
-          const fetchedShowImdb = showId ? showImdbMap[showId] ?? null : null;
-          const showImdb = fetchedShowImdb ?? existingShowImdb;
-          
-          if (showImdb || showId) {
-            item = {
-              ...originalItem,
-              show_imdb_id: showImdb,
-              show_id: showId,
-            } as MediaItem;
+    <motion.div
+      layout
+      className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6"
+    >
+      <AnimatePresence mode="popLayout">
+        {items.map((originalItem, idx) => {
+          // clone and augment episodes with show_imdb_id from local map if available
+          const isEpisode = !!(originalItem as any).episode_number;
+          let item = originalItem;
+          if (isEpisode) {
+            const showId = (originalItem as any).show_id ?? (originalItem as any).tv_id ?? null;
+            const existingShowImdb = (originalItem as any).show_imdb_id ?? null;
+            const fetchedShowImdb = showId ? showImdbMap[showId] ?? null : null;
+            const showImdb = fetchedShowImdb ?? existingShowImdb;
+            
+            if (showImdb || showId) {
+              item = {
+                ...originalItem,
+                show_imdb_id: showImdb,
+                show_id: showId,
+              } as MediaItem;
+            }
           }
-        }
 
-        return (
-          <MediaCard
-            key={`${item.id}-${(item as any).episode_number || 0}`}
-            item={item}
-            onClick={handleCardClick}
-            rank={showRank ? idx + 1 : undefined}
-            ratingsCache={ratingsCache}
-            useOmdbRatings={useOmdbRatings}
-            showEpisodeImdbOnCards={showEpisodeImdbOnCards}
-          />
-        );
-      })}
-    </div>
+          return (
+            <MediaCard
+              key={`${item.id}-${(item as any).episode_number || 0}`}
+              item={item}
+              onClick={handleCardClick}
+              rank={showRank ? idx + 1 : undefined}
+              ratingsCache={ratingsCache}
+              useOmdbRatings={useOmdbRatings}
+              showEpisodeImdbOnCards={showEpisodeImdbOnCards}
+            />
+          );
+        })}
+      </AnimatePresence>
+    </motion.div>
   );
 
   const getFilteredLibrary = () => {
@@ -773,8 +794,17 @@ const App: React.FC = () => {
 
   // ---------- RENDER ----------
   return (
-    <div className="min-h-[calc(var(--vh)*100)] bg-gradient-to-br from-[#020617] via-[#0f172a] to-[#020617] text-slate-200 font-sans pb-24 selection:bg-cyan-500/30 selection:text-cyan-100">
-      {/* HEADER */}
+    <>
+      {/* Splash Screen - Only on cold start */}
+      <AnimatePresence>
+        {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
+      </AnimatePresence>
+
+      <div className="min-h-[calc(var(--vh)*100)] bg-gradient-to-br from-[#020617] via-[#0f172a] to-[#020617] text-slate-200 font-sans pb-24 selection:bg-cyan-500/30 selection:text-cyan-100">
+        {/* Animated Background */}
+        <AnimatedBackground />
+
+        {/* HEADER */}
       <header className="sticky top-0 z-40 bg-gradient-to-r from-[#020617]/90 via-[#0f172a]/90 to-[#020617]/90 backdrop-blur-xl border-b border-white/5 shadow-lg shadow-black/20">
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between gap-6">
           {/* Logo / Home */}
@@ -1062,17 +1092,24 @@ const App: React.FC = () => {
               <span className="w-2 h-8 bg-cyan-500 rounded-full" />
               Search Results
             </h2>
-            {searchResults.length > 0 ? (
+            {isSearching ? (
+              <motion.div
+                layout
+                className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6"
+              >
+                {Array.from({ length: 10 }).map((_, idx) => (
+                  <SkeletonCard key={idx} />
+                ))}
+              </motion.div>
+            ) : searchResults.length > 0 ? (
               renderGrid(searchResults, true)
             ) : (
-              !isSearching && (
-                <div className="flex flex-col items-center justify-center py-32 text-slate-500">
-                  <Sparkles size={64} className="mb-6 text-slate-800" />
-                  <p className="text-xl font-light">
-                    Start by typing what you feel like watching above.
-                  </p>
-                </div>
-              )
+              <div className="flex flex-col items-center justify-center py-32 text-slate-500">
+                <Sparkles size={64} className="mb-6 text-slate-800" />
+                <p className="text-xl font-light">
+                  Start by typing what you feel like watching above.
+                </p>
+              </div>
             )}
           </div>
         )}
@@ -1139,20 +1176,22 @@ const App: React.FC = () => {
         />
       )}
 
-      {state.selectedEpisode && (
-        <EpisodeDetailView
-          episode={state.selectedEpisode}
-          showTitle={(state.selectedEpisode as any).show_name}
-          onClose={() => {
-            setState((prev) => ({ ...prev, selectedEpisode: null }));
-          }}
-          onRate={rateItem}
-          userRating={state.userRatings[String(state.selectedEpisode.id)]}
-          ratingsCache={ratingsCache}
-          useOmdbRatings={useOmdbRatings}
-          showEpisodeImdbOnSeasonList={showEpisodeImdbOnSeasonList}
-        />
-      )}
+      <AnimatePresence mode="wait">
+        {state.selectedEpisode && (
+          <EpisodeDetailView
+            episode={state.selectedEpisode}
+            showTitle={(state.selectedEpisode as any).show_name}
+            onClose={() => {
+              setState((prev) => ({ ...prev, selectedEpisode: null }));
+            }}
+            onRate={rateItem}
+            userRating={state.userRatings[String(state.selectedEpisode.id)]}
+            ratingsCache={ratingsCache}
+            useOmdbRatings={useOmdbRatings}
+            showEpisodeImdbOnSeasonList={showEpisodeImdbOnSeasonList}
+          />
+        )}
+      </AnimatePresence>
 
       <SettingsModal
         isOpen={isSettingsOpen}
@@ -1186,6 +1225,7 @@ const App: React.FC = () => {
         }} 
       />
     </div>
+    </>
   );
 };
 

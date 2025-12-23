@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { Star, Tv, Film, Calendar } from 'lucide-react';
 import { MediaItem } from '../types';
 
@@ -59,7 +60,12 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank, ratingsCache
   const ratingSource = cachedRating?.imdbRating ? 'imdb' : 'tmdb';
 
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.96 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.96 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
       onClick={() => onClick(item)}
       className="group relative bg-[#0a0f1e] rounded-2xl overflow-hidden cursor-pointer transition-all duration-500 transform hover:-translate-y-2 hover:z-10"
     >
@@ -139,7 +145,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, onClick, rank, ratingsCache
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 

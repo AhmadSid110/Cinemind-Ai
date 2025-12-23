@@ -1,5 +1,6 @@
 // src/components/EpisodeDetailView.tsx
 import React, { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { X, Star, Calendar, Tv } from 'lucide-react';
 import { EpisodeDetail, Review } from '../types';
 import {
@@ -228,8 +229,20 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-2">
-      <div className="relative max-w-3xl w-full max-h-[calc(var(--vh)*90)] overflow-hidden rounded-3xl bg-slate-950 border border-slate-800 shadow-2xl">
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-2"
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="relative max-w-3xl w-full max-h-[calc(var(--vh)*90)] overflow-hidden rounded-3xl bg-slate-950 border border-slate-800 shadow-2xl"
+      >
         {/* Close */}
         <button
           onClick={onClose}
@@ -363,8 +376,8 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
             )}
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 };
 
