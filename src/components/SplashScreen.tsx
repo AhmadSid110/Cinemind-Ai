@@ -8,6 +8,15 @@ interface SplashScreenProps {
 }
 
 const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
+  // Auto-complete after 2.5 seconds using useEffect
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      onComplete();
+    }, 2500);
+
+    return () => clearTimeout(timer);
+  }, [onComplete]);
+
   return (
     <motion.div
       initial={{ opacity: 1 }}
@@ -15,10 +24,6 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.3, ease: 'easeOut' }}
       className="fixed inset-0 z-[100] bg-gradient-to-br from-[#020617] via-[#0f172a] to-[#020617] flex items-center justify-center"
-      onAnimationComplete={() => {
-        // Auto-complete after 2.5 seconds
-        setTimeout(onComplete, 2500);
-      }}
     >
       <div className="flex flex-col items-center gap-6">
         {/* Animated logo */}
@@ -29,14 +34,15 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           className="relative"
         >
           {/* Glow effect using opacity instead of box-shadow */}
-          <motion.div
-            animate={{
-              opacity: [0.3, 0.6, 0.3],
-            }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-            className="absolute inset-0 bg-cyan-500 rounded-3xl blur-2xl -z-10"
-            style={{ transform: 'scale(1.2)' }}
-          />
+          <div className="absolute inset-0 -z-10 scale-[1.2]">
+            <motion.div
+              animate={{
+                opacity: [0.3, 0.6, 0.3],
+              }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              className="w-full h-full bg-cyan-500 rounded-3xl blur-2xl"
+            />
+          </div>
           
           <div className="bg-gradient-to-br from-cyan-500 to-blue-600 p-6 rounded-3xl relative z-10">
             <Video className="text-white fill-white" size={64} />
