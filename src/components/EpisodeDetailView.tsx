@@ -240,7 +240,7 @@ const EpisodeDetailView: React.FC<EpisodeDetailViewProps> = ({
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.96 }}
-        transition={{ duration: 0.25, ease: 'easeOut' }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
         className="relative max-w-3xl w-full max-h-[calc(var(--vh)*90)] overflow-hidden rounded-3xl bg-slate-950 border border-slate-800 shadow-2xl"
       >
         {/* Close */}

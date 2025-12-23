@@ -28,19 +28,19 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
           transition={{ duration: 0.5, ease: 'easeOut' }}
           className="relative"
         >
+          {/* Glow effect using opacity instead of box-shadow */}
           <motion.div
             animate={{
-              boxShadow: [
-                '0 0 20px rgba(6, 182, 212, 0.3)',
-                '0 0 40px rgba(6, 182, 212, 0.5)',
-                '0 0 20px rgba(6, 182, 212, 0.3)',
-              ],
+              opacity: [0.3, 0.6, 0.3],
             }}
             transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-            className="bg-gradient-to-br from-cyan-500 to-blue-600 p-6 rounded-3xl"
-          >
+            className="absolute inset-0 bg-cyan-500 rounded-3xl blur-2xl -z-10"
+            style={{ transform: 'scale(1.2)' }}
+          />
+          
+          <div className="bg-gradient-to-br from-cyan-500 to-blue-600 p-6 rounded-3xl relative z-10">
             <Video className="text-white fill-white" size={64} />
-          </motion.div>
+          </div>
           
           {/* Sparkles decoration */}
           <motion.div
