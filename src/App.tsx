@@ -1145,7 +1145,6 @@ const App: React.FC = () => {
           showTitle={(state.selectedEpisode as any).show_name}
           onClose={() => {
             setState((prev) => ({ ...prev, selectedEpisode: null }));
-            history.back();
           }}
           onRate={rateItem}
           userRating={state.userRatings[String(state.selectedEpisode.id)]}
